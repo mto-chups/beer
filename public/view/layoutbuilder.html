@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Constructeur de layout — Gridstack.js</title>
+    <link rel="stylesheet" href="../assets/gridstack/gridstack.min.css" />
+
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f4f7fa;
+        margin: 20px;
+      }
+      #toolbar {
+        margin-bottom: 20px;
+      }
+      #toolbar button {
+        margin-right: 8px;
+        padding: 6px 10px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .grid-stack {
+        background: #fff;
+        border-radius: 10px;
+        margin: 0 auto;
+        width: 1280px; /* ratio 16/9 (1280×720) */
+        min-height: 720px;
+        box-shadow: 0 0 8px #ddd;
+      }
+
+      /* ────────────── STYLE DU WIDGET (CONTENT) ────────────── */
+
+      .gs-widget {
+        position: relative; /* Nécessaire pour position:absolute interne */
+        background: #fafbff;
+        border: 1px solid #bbb;
+        border-radius: 10px;
+        overflow: hidden;
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+        box-sizing: border-box;
+      }
+
+      /* Le conteneur de texte occupe tout l’espace du widget */
+      .widget-body {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        padding: 0;
+        margin: 0;
+      }
+
+      /* Le texte lui-même (ajusté en JS) */
+      .widget-text {
+        width: 100%;
+        height: 100%;
+        text-align: center;
+        word-break: break-word;
+        margin: 0;
+        padding: 0;
+        line-height: 1.1;
+        font-size: 200px; /* sera redimensionné via JS */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        cursor: move;
+      }
+
+      /* Les boutons « éditer » et « supprimer » superposés en haut à droite */
+      .widget-btns {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        display: flex;
+        gap: 4px;
+        z-index: 10;
+      }
+      .edit-btn,
+      .delete-btn {
+        background: rgba(255, 255, 255, 0.3);
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        padding: 0;
+      }
+      .edit-btn:hover,
+      .delete-btn:hover {
+        background: rgba(0, 0, 0, 0.21);
+        transition: all 0.2s;
+      }
+      .edit-btn {
+        color: #1abc9c;
+      }
+      .delete-btn {
+        color: #e74c3c;
+      }
+
+      /* Optionnel : si vous voulez voir une légère ombre interne */
+      .gs-widget:hover {
+        box-shadow: inset 0 0 8px #0002;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Constructeur de layout — GridStack.js</h1>
+
+    <div id="toolbar">
+      <button onclick="addTextWidget()">+ Ajouter texte</button>
+      <button onclick="saveLayout()">💾 Sauver Layout</button>
+      <button onclick="loadLayout()">🔄 Charger Layout</button>
+      <button onclick="grid.removeAll()">🗑 Vider</button>
+    </div>
+
+    <div class="grid-stack" id="mainGrid"></div>
+
+    <!-- GridStack JS offline (votre fichier local) -->
+    <script src="../assets/gridstack/gridstack-all.js"></script>
+    <script>
+      // ──────────────────────────────────────────────────────────
+      // 1. Initialisation de GridStack v11+
+      // ──────────────────────────────────────────────────────────
+      const grid = GridStack.init(
+        {
+          column: 16,
+          cellHeight: 45, // 45 * 16 = 720px
+          float: true,
+        },
+        "#mainGrid"
+      );
+
+      // ──────────────────────────────────────────────────────────
+      // 2. Création du widget « texte plein cadre »
+      // ──────────────────────────────────────────────────────────
+
+      window.addTextWidget = function () {
+        const text = prompt("Saisir le texte à afficher :");
+        if (text === null || text.trim() === "") return;
+        createTextWidget(text);
+      };
+
+      function createTextWidget(text, w = 8, h = 4) {
+        // ID unique
+        const id = "widget-" + Date.now() + Math.floor(Math.random() * 10000);
+
+        // 1) Créer le wrapper <div class="grid-stack-item">
+        const wrapper = document.createElement("div");
+        wrapper.classList.add("grid-stack-item");
+        wrapper.setAttribute("gs-w", w);
+        wrapper.setAttribute("gs-h", h);
+
+        // 2) Créer le <div class="grid-stack-item-content gs-widget" id="...">
+        const inner = document.createElement("div");
+        inner.classList.add("grid-stack-item-content", "gs-widget");
+        inner.id = id;
+
+        // 3) Insérer le contenu HTML
+        inner.innerHTML = `
+        <!-- Boutons superposés -->
+        <div class="widget-btns">
+          <button class="edit-btn" onclick="editWidgetText('${id}')">✎</button>
+          <button class="delete-btn" onclick="removeWidget('${id}')">✖</button>
+        </div>
+
+        <!-- Zone texte pleine -->
+        <div class="widget-body">
+          <div class="widget-text" id="${id}-content">${text}</div>
+        </div>
+      `;
+
+        // 4) Attacher au wrapper et ajouter à la grille
+        wrapper.appendChild(inner);
+        grid.addWidget(wrapper);
+
+        // 5) Ajuster la police quelques millisecondes plus tard
+        setTimeout(() => {
+          const td = document.getElementById(id + "-content");
+          fitTextToContainer(td);
+        }, 50);
+      }
+
+      window.removeWidget = function (id) {
+        const inner = document.getElementById(id);
+        if (!inner) return;
+        const wrapper = inner.closest(".grid-stack-item");
+        if (wrapper) grid.removeWidget(wrapper);
+      };
+
+      window.editWidgetText = function (id) {
+        const contentDiv = document.getElementById(id + "-content");
+        const currentText = contentDiv.innerText;
+        const newText = prompt("Modifier le texte :", currentText);
+        if (newText !== null) {
+          contentDiv.innerText = newText;
+          fitTextToContainer(contentDiv);
+        }
+      };
+
+      // ──────────────────────────────────────────────────────────
+      // 3. Ajuster dynamiquement la taille de la police
+      // ──────────────────────────────────────────────────────────
+
+      function fitTextToContainer(textDiv) {
+        if (!textDiv) return;
+        const parent = textDiv.parentElement;
+        if (!parent) return;
+
+        // On commence trèèès gros, puis on réduit jusqu’à tenir sans débord
+        let fontSize = 200;
+        textDiv.style.fontSize = fontSize + "px";
+
+        while (
+          (textDiv.scrollWidth > parent.clientWidth ||
+            textDiv.scrollHeight > parent.clientHeight) &&
+          fontSize > 6
+        ) {
+          fontSize -= 2;
+          textDiv.style.fontSize = fontSize + "px";
+        }
+      }
+
+      // Quand le redimensionnement s’arrête, on refitte le texte
+      grid.on("resizestop", function (event, wrapperEl) {
+        const textDiv = wrapperEl.querySelector(".widget-text");
+        fitTextToContainer(textDiv);
+      });
+
+      // ──────────────────────────────────────────────────────────
+      // 4. Sauvegarde / Chargement du layout
+      // ──────────────────────────────────────────────────────────
+
+      function saveLayout() {
+        // save(true) stocke aussi node.content (notre HTML interne)
+        const layout = grid.save(true);
+        localStorage.setItem("myGridLayout", JSON.stringify(layout));
+        alert("Layout sauvegardé !");
+      }
+
+      function loadLayout() {
+        const stored = localStorage.getItem("myGridLayout");
+        if (!stored) return;
+        const layout = JSON.parse(stored);
+
+        // Vider la grille
+        grid.removeAll();
+
+        // Recréer chaque widget à l’identique
+        layout.forEach((node) => {
+          // node.content contient tout le <div class="grid-stack-item-content">…</div>
+          const el = GridStack.prototype.makeWidget(node.content, {
+            x: node.x,
+            y: node.y,
+            w: node.w,
+            h: node.h,
+            id: node.id,
+          });
+          grid.addWidget(el);
+
+          setTimeout(() => {
+            const td = el.querySelector(".widget-text");
+            fitTextToContainer(td);
+          }, 50);
+        });
+      }
+
+      // Charger automatiquement s’il y a du contenu en localStorage
+      if (localStorage.getItem("myGridLayout")) {
+        setTimeout(loadLayout, 100);
+      }
+    </script>
+  </body>
+</html>

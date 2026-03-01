@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Admin — Événements spéciaux</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 600px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        background-color: rgb(51, 51, 51);
+        color: antiquewhite;
+      }
+      h1 {
+        text-align: center;
+        color: #fff;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        font-weight: bold;
+      }
+      input,
+      select {
+        padding: 0.5rem;
+        font-size: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      button {
+        padding: 0.8rem;
+        background: rgb(87, 87, 87);
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 1rem;
+      }
+      button:hover {
+        background: rgba(197, 161, 0, 0.8);
+        transition: all 0.3s ease-in;
+      }
+      button:disabled {
+        background: #aaa;
+        cursor: default;
+      }
+      .message {
+        margin-top: 1rem;
+        padding: 0.8rem;
+        border-radius: 4px;
+      }
+      .message.success {
+        background: #e0f7e9;
+        color: #2d7a4b;
+      }
+      .message.error {
+        background: #fdecea;
+        color: #a33;
+      }
+
+      /* Cache le checkbox natif */
+      #activeOnly {
+        opacity: 0;
+        width: 0;
+        height: 0;
+        position: absolute;
+      }
+
+      /* Le conteneur du switch */
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 28px;
+        vertical-align: middle;
+      }
+
+      /* Le fond du switch */
+      .switch::before {
+        content: "";
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(197, 161, 0, 0.5);
+        border-radius: 14px;
+        transition: background-color 0.3s;
+        top: 0;
+        left: 0;
+      }
+
+      /* La “bille” du switch */
+      .switch::after {
+        content: "";
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        background-color: #fff;
+        border-radius: 50%;
+        top: 2px;
+        left: 2px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        transition: transform 0.3s;
+      }
+
+      /* Quand c’est coché */
+      #activeOnly:checked + .switch::before {
+        background-color: rgba(197, 161, 0, 1);
+      }
+      #activeOnly:checked + .switch::after {
+        transform: translateX(22px);
+      }
+
+      /* Label contenant le switch et le texte */
+      .switch-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        user-select: none;
+        padding: 10px;
+        margin: 10px;
+      }
+      table {
+        background-color: rgb(87, 87, 87);
+        border-radius: 3px;
+      }
+      input {
+        color: antiquewhite;
+        background-color: rgb(51, 51, 51);
+      }
+      select {
+        color: antiquewhite;
+        background-color: rgb(51, 51, 51);
+      }
+      #eventsTable tr.inactive {
+        color: #b6b6b6;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Créer un événement spécial</h1>
+    <form id="eventForm">
+      <label>
+        Marque (toutes)
+        <select name="brand" id="brandSelect">
+          <option value="">— toutes —</option>
+        </select>
+      </label>
+      <label>
+        Type (tous)
+        <select name="type" id="typeSelect">
+          <option value="">— tous —</option>
+        </select>
+      </label>
+      <label>
+        Bonus fixe
+        <input type="number" value="0" name="bonus_pts" required />
+      </label>
+      <label>
+        Multiplicateur
+        <input type="number" value="1" name="multiplier" step="1" required />
+      </label>
+      <label>
+        Début
+        <input type="datetime-local" name="starts_at" required />
+      </label>
+      <label>
+        Fin
+        <input type="datetime-local" name="ends_at" required />
+      </label>
+      <button type="submit">Créer l’événement</button>
+    </form>
+    <div id="flashMessage"></div>
+
+    <label class="switch-label">
+      <input type="checkbox" id="activeOnly" checked />
+      <span class="switch"></span>
+      Afficher uniquement les événements actifs
+    </label>
+
+    <table
+      id="eventsTable"
+      border="1"
+      cellpadding="6"
+      style="width: 100%; margin-top: 1rem; border-collapse: collapse"
+    >
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Marque</th>
+          <th>Type</th>
+          <th>Bonus fixe</th>
+          <th>Multiplicateur</th>
+          <th>Début</th>
+          <th>Fin</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <script>
+      async function fetchJSON(u) {
+        const r = await fetch(u);
+        if (!r.ok) throw new Error(r.statusText);
+        return r.json();
+      }
+
+      const activeOnlyChk = document.getElementById("activeOnly");
+      const eventsBody = document.querySelector("#eventsTable tbody");
+
+      function isActive(evt) {
+        const now = new Date();
+        return new Date(evt.starts_at) <= now && now < new Date(evt.ends_at);
+      }
+
+      async function loadEvents() {
+        try {
+          const evts = await fetchJSON("/api/beer_events");
+          const filtered = activeOnlyChk.checked ? evts.filter(isActive) : evts;
+          eventsBody.innerHTML = filtered
+            .map((evt) => {
+              const isEvtActive = isActive(evt);
+              return `
+                <tr class="${isEvtActive ? "" : "inactive"}">
+                <td>${evt.id}</td>
+                <td>${evt.brand || "<i>toutes</i>"}</td>
+                <td>${evt.type || "<i>tous</i>"}</td>
+                <td>${evt.bonus_pts}</td>
+                <td>${evt.multiplier}</td>
+                <td>${new Date(evt.starts_at).toLocaleString()}</td>
+                <td>${new Date(evt.ends_at).toLocaleString()}</td>
+                <td>
+                    <button onclick="deleteEvent(${evt.id})">🗑️</button>
+                </td>
+                </tr>
+            `;
+            })
+            .join("");
+        } catch (e) {
+          console.error("Erreur chargement événements :", e);
+          eventsBody.innerHTML = `<tr><td colspan="7">Erreur de chargement</td></tr>`;
+        }
+      }
+
+      activeOnlyChk.addEventListener("change", loadEvents);
+      loadEvents();
+
+      // Préremplir les dates (maintenant et +1h)
+      function setDefaultDates() {
+        const now = new Date();
+        const pad = (n) => (n < 10 ? "0" + n : n);
+        const toLocal = (d) => {
+          const yyyy = d.getFullYear();
+          const mm = pad(d.getMonth() + 1);
+          const dd = pad(d.getDate());
+          const hh = pad(d.getHours());
+          const mi = pad(d.getMinutes());
+          return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+        };
+        document.querySelector("input[name=starts_at]").value = toLocal(now);
+        document.querySelector("input[name=ends_at]").value = toLocal(
+          new Date(now.getTime() + 3600_000)
+        );
+      }
+      setDefaultDates();
+
+      // Remplir les selects
+      Promise.all([fetchJSON("/api/beers")])
+        .then(([beers]) => {
+          // Récupère les listes uniques
+          const brands = [...new Set(beers.map((b) => b.brand))].sort();
+          const types = [...new Set(beers.map((b) => b.type))].sort();
+
+          const brandSel = document.getElementById("brandSelect");
+          brands.forEach((brand) => {
+            const opt = document.createElement("option");
+            opt.value = brand;
+            opt.textContent = brand;
+            brandSel.appendChild(opt);
+          });
+
+          const typeSel = document.getElementById("typeSelect");
+          types.forEach((type) => {
+            const opt = document.createElement("option");
+            opt.value = type;
+            opt.textContent = type;
+            typeSel.appendChild(opt);
+          });
+        })
+        .catch((err) => {
+          console.error("Impossible de charger les bières :", err);
+        });
+      const form = document.getElementById("eventForm");
+      const flash = document.getElementById("flashMessage");
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        flash.textContent = "";
+        const data = Object.fromEntries(new FormData(form));
+        try {
+          const res = await fetch("/api/beer_events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.message || res.statusText);
+          flash.className = "message success";
+          flash.textContent = `Événement créé (id=${json.id})`;
+          form.reset();
+          setDefaultDates();
+          loadEvents();
+        } catch (err) {
+          flash.className = "message error";
+          flash.textContent = "Erreur : " + err.message;
+        }
+      });
+
+      async function deleteEvent(id) {
+        if (!confirm("Supprimer cet événement ?")) return;
+        try {
+          const res = await fetch(`/api/beer_events/${id}`, {
+            method: "DELETE",
+          });
+          if (!res.ok) throw new Error(await res.text());
+          loadEvents();
+        } catch (e) {
+          alert("Erreur lors de la suppression : " + e.message);
+        }
+      }
+    </script>
+  </body>
+</html>

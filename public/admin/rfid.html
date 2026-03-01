@@ -1,0 +1,18 @@
+<h1>Associer un UID à une bière</h1>
+<form id="rfidForm">
+  <input name="uid" placeholder="UID RFID" required />
+  <input name="beerId" placeholder="ID bière" required />
+  <button type="submit">Associer</button>
+</form>
+<script>
+  document.getElementById("rfidForm").onsubmit = async function (e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(this));
+    const res = await fetch("/api/rfid/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    alert((await res.json()).message);
+  };
+</script>

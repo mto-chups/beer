@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Scoreboard</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+        background-color: rgb(51, 51, 51);
+        color: antiquewhite;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        text-align: center;
+      }
+      h1.team-name {
+        font-size: 8rem;
+        margin-bottom: 0.2em;
+      }
+      div.team-points {
+        font-size: 5rem;
+        font-weight: bold;
+        margin-bottom: 0.5em;
+      }
+      div.user-scores {
+        margin: 1em 0;
+        color: rgba(250, 235, 215, 0.74);
+        font-size: 1.2rem;
+      }
+      div.user-scores div {
+        font-size: 1.1rem;
+        margin: 0.2em 0;
+        font-size: 1.1rem;
+      }
+      div.ranking {
+        margin-top: 2em;
+        text-align: left;
+      }
+      div.ranking h2 {
+        font-size: 3rem;
+        margin-bottom: 0.4em;
+        text-align: center;
+      }
+      div.ranking ol {
+        font-size: 1.5rem;
+        text-align: center;
+        padding-left: 2em;
+      }
+      div.ranking li {
+        margin: 0.2em 0;
+      }
+
+      div.ranking li {
+        background-color: rgb(26, 26, 26);
+      }
+      div.ranking li:nth-child(odd) {
+        background-color: rgb(41, 41, 41);
+      }
+      div.ranking li:nth-child(1) {
+        background-color: rgb(197, 161, 0);
+      }
+
+      @keyframes pulse-yellow {
+        0% {
+          transform: scale(1);
+          color: white;
+          text-shadow: none;
+        }
+        60% {
+          transform: scale(1.3);
+          color: gold;
+          text-shadow: 0 0 10px gold;
+        }
+        100% {
+          transform: scale(1);
+          color: antiquewhite;
+          text-shadow: none;
+        }
+      }
+
+      .team-points.pulse {
+        animation: pulse-yellow 0.6s ease-out forwards;
+      }
+
+      .bubble-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none; /* pour ne pas bloquer les clics */
+        overflow: hidden;
+        z-index: -100;
+      }
+
+      .bubble {
+        position: absolute;
+        bottom: 0;
+        width: 10px;
+        height: 10px;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        animation: rise 4s linear forwards;
+      }
+
+      @keyframes rise {
+        0% {
+          transform: translateY(0) scale(1);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(-100vh) scale(1.5);
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bubble-container"></div>
+    <div class="container">
+      <h1 class="team-name"></h1>
+      <div class="team-points"></div>
+
+      <div class="user-scores">
+        <h2>Scores individuels</h2>
+        <!-- listé ici -->
+      </div>
+
+      <div class="ranking">
+        <h2>Classement général</h2>
+        <ol></ol>
+        <p class="your-rank" style="text-align: center"></p>
+      </div>
+    </div>
+
+    <script>
+      // ────────────────────────────────────────
+      // 1) Bulles d’arrière-plan
+      // ────────────────────────────────────────
+      function spawnBubble() {
+        const container = document.querySelector(".bubble-container");
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        const size = Math.random() * 8 + 9; // 4px à 12px
+        bubble.style.width = `${size}px`;
+        bubble.style.height = `${size}px`;
+        bubble.style.left = `${Math.random() * 100}%`;
+        bubble.style.animationDuration = `${Math.random() * 4 + 3}s`;
+        container.appendChild(bubble);
+        setTimeout(() => bubble.remove(), 10000);
+      }
+      setInterval(() => {
+        if (Math.random() < 0.5) spawnBubble();
+      }, 300);
+
+      // utilitaire fetch JSON
+      async function fetchJSON(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.statusText);
+        return r.json();
+      }
+      let previousScore = null;
+
+      // Récupère l'id d'équipe dans l'URL
+      const params = new URLSearchParams(window.location.search);
+      const equipeId = Number(params.get("equipe"));
+      if (!equipeId) {
+        alert("Il faut passer ?equipe=ID");
+        throw new Error("Missing equipe param");
+      }
+
+      // met à jour l'affichage
+      async function updateDisplay() {
+        // 1) classement global
+        const ranking = await fetchJSON("/stats/equipes/scores");
+        // trouve ton équipe
+        const teamInfo = ranking.find((t) => t.teamId === equipeId);
+        if (!teamInfo) {
+          throw new Error(`Aucune équipe pour ID=${equipeId}`);
+        }
+        const ptsDiv = document.querySelector(".team-points");
+        const newScore = teamInfo.points;
+
+        if (previousScore !== newScore) {
+          // Si on a déjà un précédent et que le score a augmenté
+          if (previousScore !== null && newScore > previousScore) {
+            ptsDiv.classList.add("pulse");
+            // on retire la classe après l'animation pour pouvoir la rejouer
+            ptsDiv.addEventListener(
+              "animationend",
+              () => {
+                ptsDiv.classList.remove("pulse");
+              },
+              { once: true }
+            );
+          }
+          // Mettre à jour le contenu du score
+          ptsDiv.textContent = newScore;
+          previousScore = newScore;
+        }
+        // 2) nom + points
+        document.querySelector(".team-name").textContent = teamInfo.teamName;
+        document.querySelector(".team-points").textContent = teamInfo.points;
+
+        // 3) scores individuels
+        const users = await fetchJSON(`/stats/utilisateurs?equipe=${equipeId}`);
+        const usersDiv = document.querySelector(".user-scores");
+        // efface les anciens
+        usersDiv.querySelectorAll("div").forEach((d) => {
+          if (!d.matches("h2")) d.remove();
+        });
+        // ajoute les nouveaux
+        users.forEach((u) => {
+          const d = document.createElement("div");
+          d.textContent = `${u.firstName} : ${u.points} bières`;
+          usersDiv.appendChild(d);
+        });
+
+        // 4) classement général
+        const ol = document.querySelector(".ranking ol");
+        ol.innerHTML = "";
+        ranking.forEach((t) => {
+          const li = document.createElement("li");
+          li.textContent = `${t.teamName} : ${t.points} pts`;
+          ol.appendChild(li);
+        });
+
+        // 5) ta position
+        const pos = ranking.findIndex((t) => t.teamId === equipeId);
+        document.querySelector(".your-rank").textContent =
+          pos >= 0
+            ? `Votre équipe est à la place ${pos + 1} sur ${ranking.length}.`
+            : "";
+      }
+
+      // fonction de polling
+      async function refresh() {
+        try {
+          await updateDisplay();
+        } catch (err) {
+          console.error("Erreur updateDisplay:", err);
+        }
+      }
+
+      // lancement immédiat + toutes les 5s
+      refresh();
+      setInterval(refresh, 5000);
+    </script>
+  </body>
+</html>

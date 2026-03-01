@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Associer un UID à une bière</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        background: #f7f7f7;
+        padding: 2rem;
+      }
+      form {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        max-width: 400px;
+        margin: auto;
+      }
+      label {
+        display: block;
+        margin-top: 1rem;
+      }
+      input,
+      select,
+      button {
+        width: 100%;
+        padding: 0.5rem;
+        margin-top: 0.3rem;
+      }
+      .flash {
+        padding: 0.6rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+      }
+      .success {
+        background: #d4edda;
+        color: #155724;
+      }
+      .error {
+        background: #f8d7da;
+        color: #721c24;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 style="text-align: center">Associer un UID à une bière</h1>
+
+    <div id="flash-container"></div>
+
+    <form id="rfidForm">
+      <label>
+        UID RFID :
+        <input
+          type="text"
+          name="uid"
+          placeholder="Scanner ou coller l'UID"
+          required
+          autofocus
+        />
+      </label>
+      <label>
+        Sélectionner la bière :
+        <select name="beerId" id="beerSelect" required>
+          <option value="">Chargement…</option>
+        </select>
+      </label>
+      <button type="submit">Enregistrer</button>
+    </form>
+    <script src="/assets/js/socket.io.js"></script>
+    <!-- 2) Se connecter à Flask-SocketIO EXPLICITEMENT sur le port 5000 -->
+    <script>
+      const socket = io("http://localhost:5000");
+      socket.on("connect", () => console.log("WS connecté"));
+      socket.on("connect_error", (e) => console.error("WS error", e));
+      socket.on("tagScanned", (payload) => {
+        // payload est { uid: 'E659A700' } ou même une chaîne JSON si fallback
+        let theUid;
+        if (typeof payload === "string") {
+          // cas où c’est une chaîne JSON
+          try {
+            const obj = JSON.parse(payload);
+            theUid = obj.uid;
+          } catch {
+            theUid = payload; // au pire c’est directement la chaîne
+          }
+        } else {
+          theUid = payload.uid;
+        }
+        const input = document.querySelector('input[name="uid"]');
+        input.value = theUid;
+        input.focus();
+      });
+    </script>
+    <script>
+      // Affiche un message temporaire
+      function flash(msg, type = "success") {
+        const div = document.createElement("div");
+        div.className = `flash ${type}`;
+        div.textContent = msg;
+        const container = document.getElementById("flash-container");
+        container.appendChild(div);
+        setTimeout(() => div.remove(), 4000);
+      }
+
+      // Charge la liste des bières pour le <select>
+      async function loadBeers() {
+        const res = await fetch("/api/beers");
+        if (!res.ok) return flash("Erreur chargement bières", "error");
+        const beers = await res.json();
+        const sel = document.getElementById("beerSelect");
+        sel.innerHTML = '<option value="">-- Choisir --</option>';
+        beers.forEach((b) => {
+          const o = document.createElement("option");
+          o.value = b.id;
+          o.textContent = `${b.brand} — ${b.type}`;
+          sel.appendChild(o);
+        });
+      }
+
+      // Gère la soumission du formulaire
+      document.getElementById("rfidForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const data = Object.fromEntries(new FormData(form));
+        const res = await fetch("/api/rfid/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (res.ok) {
+          flash(json.message, "success");
+          form.uid.value = "";
+          form.uid.focus();
+          localStorage.setItem("lastBeerId", form.beerId.value);
+        } else {
+          flash(json.message, "error");
+        }
+      };
+
+      // Init
+      loadBeers();
+    </script>
+  </body>
+</html>

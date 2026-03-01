@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Dépose ta bière</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 480px;
+        margin: 2rem auto;
+        text-align: center;
+        background-color: rgb(51, 51, 51);
+        color: antiquewhite;
+      }
+      h1,
+      h2 {
+        margin-bottom: 1rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+      .user-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+      .card {
+        color: rgba(250, 235, 215, 0.74);
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        padding: 0.8rem;
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s;
+        user-select: none;
+        background-color: rgb(81, 81, 81);
+      }
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+      }
+      .card.selected {
+        border: 2px solid rgb(197, 161, 0);
+      }
+      #startBtn {
+        padding: 0.8rem 1.2rem;
+        background: rgb(197, 161, 0);
+        color: rgb(51, 51, 51);
+        border: none;
+        border-radius: 4px;
+        font-size: 1.1rem;
+        cursor: pointer;
+        transition: all 1s ease-out;
+      }
+      #startBtn:disabled {
+        background-color: rgb(65, 65, 65);
+        cursor: default;
+        color: #fff;
+      }
+
+      #startBtn:active {
+        transform: scale(2);
+      }
+
+      /* Pop-up overlay */
+      #popupOverlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.75);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+      #popup {
+        background: #fff;
+        color: black;
+        border-radius: 8px;
+        padding: 2rem;
+        position: relative;
+        max-width: 300px;
+        text-align: center;
+      }
+      #popup .close-btn {
+        background: transparent;
+        border: solid black 1px;
+        border-radius: 10px;
+        font-size: 1.2rem;
+        cursor: pointer;
+        padding: 5px 20px;
+      }
+
+      /* Container pour le GIF, juste sous le bouton */
+      #gifContainer {
+        margin-top: 1rem;
+        text-align: center;
+      }
+      #gifContainer img {
+        max-width: 200px;
+        display: inline-block;
+      }
+
+      @keyframes bg-success {
+        0% {
+          background-color: rgb(51, 51, 51);
+        }
+        50% {
+          background-color: rgba(19, 216, 19, 0.527);
+        }
+
+        100% {
+          background-color: rgb(51, 51, 51);
+        }
+      }
+
+      .flash-success {
+        animation: bg-success 2s ease-in;
+      }
+
+      @keyframes bg-echec {
+        0% {
+          background-color: rgb(51, 51, 51);
+        }
+        50% {
+          background-color: rgba(192, 23, 23, 0.527);
+        }
+
+        100% {
+          background-color: rgb(51, 51, 51);
+        }
+      }
+      .flash-echec {
+        animation: bg-echec 1.5s ease-in;
+      }
+
+      .beer-drop {
+        position: fixed;
+        top: -40px; /* commence juste en-dessous de la fenêtre */
+        font-size: 2rem; /* taille de l’émoji */
+        pointer-events: none;
+        animation: drop-beer linear forwards;
+        z-index: -100;
+      }
+
+      @keyframes drop-beer {
+        0% {
+          transform: translateY(0) rotate(0deg);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(110vh) rotate(360deg);
+          opacity: 0;
+        }
+      }
+
+      @keyframes score-pop {
+        0% {
+          transform: scale(0);
+          opacity: 0;
+          color: gold;
+          text-shadow: 0 0 0 gold;
+        }
+        50% {
+          transform: scale(1.8);
+          opacity: 1;
+          color: gold;
+          text-shadow: 0 0 8px gold, 0 0 16px gold,
+            0 0 24px rgba(255, 215, 0, 0.6);
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+          color: #b9b9b9;
+          text-shadow: none;
+        }
+      }
+
+      .score-pop {
+        animation: score-pop 1s ease-out;
+      }
+
+      .last-score {
+        margin: 0.8rem 0 0;
+        color: #b9b9b9;
+        font-size: 4rem;
+        font-weight: bolder;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Choisissez votre équipe</h1>
+    <div id="teamsGrid" class="grid"></div>
+
+    <h2 id="usersGridTitle" style="display: none">Choisissez votre nom</h2>
+    <div
+      id="usersGrid"
+      class="user-grid"
+      style="display: none; text-align: center"
+    ></div>
+
+    <button id="startBtn" disabled>Scanner ma bière !</button>
+    <p id="lastScore" class="last-score"></p>
+
+    <div id="gifContainer"></div>
+
+    <!-- Pop-up -->
+    <div id="popupOverlay">
+      <div id="popup">
+        <h3 style="padding: 10px">Dépose ta bière !</h3>
+        <button class="close-btn" title="Fermer">Annuler</button>
+      </div>
+    </div>
+
+    <script>
+      const lastScoreP = document.getElementById("lastScore");
+      const evt = new EventSource("/api/scan_callback/events");
+      const gifContainer = document.getElementById("gifContainer");
+      const target = document.body;
+      // génère un 🍺 qui monte
+      function spawnBeer() {
+        const beer = document.createElement("div");
+        beer.className = "beer-drop";
+        beer.textContent = "🍺";
+        // position horizontale aléatoire
+        beer.style.left = Math.random() * 100 + "vw";
+        // durée de montée aléatoire entre 3 et 6s
+        beer.style.animationDuration = Math.random() * 3 + 3 + "s";
+        document.body.appendChild(beer);
+        // nettoyage après la fin de l'anim
+        beer.addEventListener("animationend", () => beer.remove());
+      }
+
+      function flash(className) {
+        // 1) on retire la classe si elle est déjà là
+        target.classList.remove(className);
+
+        // 2) on force un “reflow” pour que le navigateur
+        //     voie bien la différence ▶️  lecture de offsetWidth
+        void target.offsetWidth;
+
+        // 3) on (re)met la classe = l’animation repart de 0
+        target.classList.add(className);
+
+        // 4) nettoyage une fois finie (pour éviter d’empiler les classes)
+        target.addEventListener(
+          "animationend",
+          () => {
+            target.classList.remove(className);
+          },
+          { once: true }
+        );
+      }
+
+      // si tu veux la stopper un jour :
+
+      evt.onmessage = (e) => {
+        const { uid, success, message, score } = JSON.parse(e.data);
+
+        console.log(message, success, score);
+        if (success && message.includes("Bière consommée enregistrée")) {
+          closePopup();
+
+          // Choix aléatoire de 1 à 22
+          const n = Math.floor(Math.random() * 22) + 1;
+          const img = document.createElement("img");
+          // Adapte le chemin si besoin ; ici on utilise le format " (n).gif"
+          img.src = `../assets/Beer_gif/success/ (${n}).gif`;
+          flash("flash-success");
+          const beerRainInterval = setInterval(spawnBeer, 500);
+          if (score !== undefined) {
+            lastScoreP.textContent = `+${score} points`;
+            lastScoreP.classList.remove("score-pop");
+            void lastScoreP.offsetWidth;
+            lastScoreP.classList.add("score-pop");
+            // Disparition douce au bout de 5 s
+            setTimeout(() => (lastScoreP.textContent = ""), 10000);
+          }
+          // Vide l'ancien éventuel, ajoute le nouveau
+          gifContainer.innerHTML = "";
+          gifContainer.appendChild(img);
+
+          // Supprime après 5s
+          setTimeout(() => {
+            gifContainer.innerHTML = "";
+            clearInterval(beerRainInterval);
+          }, 10000);
+
+          return;
+        } else if (!success && message.includes("Erreur serveur")) {
+          closePopup();
+          flash("flash-echec");
+          console.log("Échec : Bière surement déjà enregistrée : " + message);
+          return;
+        } else if (!success) {
+          //alert("Échec : " + message);
+          console.log("Échec : " + message);
+          flash("flash-echec");
+          closePopup();
+          target.classList.add("flash-echec");
+        }
+      };
+
+      async function fetchJSON(url, opts = {}) {
+        const res = await fetch(url, opts);
+        if (!res.ok) throw new Error(res.statusText);
+        return res.json();
+      }
+
+      const teamsGrid = document.getElementById("teamsGrid");
+      const usersGrid = document.getElementById("usersGrid");
+      const usersGridTitle = document.getElementById("usersGridTitle");
+      const startBtn = document.getElementById("startBtn");
+      const popupOvl = document.getElementById("popupOverlay");
+      const popupClose = popupOvl.querySelector(".close-btn");
+
+      let selectedTeamId = null;
+      let selectedUserId = null;
+      let autoCloseTimer = null;
+
+      // 1) Chargement des équipes
+      fetchJSON("/api/teams")
+        .then((teams) => {
+          teamsGrid.innerHTML = teams
+            .map(
+              (t) => `
+                  <div class="card" data-team-id="${t.id}">
+                    ${t.name}
+                  </div>`
+            )
+            .join("");
+          teamsGrid.querySelectorAll(".card").forEach((card) => {
+            card.addEventListener("click", () => {
+              teamsGrid
+                .querySelectorAll(".card")
+                .forEach((c) => c.classList.remove("selected"));
+              card.classList.add("selected");
+              selectedTeamId = card.dataset.teamId;
+              loadUsers(selectedTeamId);
+            });
+          });
+        })
+        .catch((e) => {
+          console.error("Erreur chargement équipes :", e);
+          teamsGrid.innerHTML = "<p>Impossible de charger les équipes</p>";
+        });
+
+      // 2) Chargement des users pour l'équipe
+      async function loadUsers(teamId) {
+        usersGrid.style.display = "grid";
+        usersGridTitle.style.display = "block";
+        usersGrid.innerHTML = "<p>Chargement…</p>";
+        let users;
+        try {
+          users = await fetchJSON("/api/users");
+          users = users.filter((u) => u.team_id == teamId);
+        } catch {
+          users = await fetchJSON(`/api/teams/${teamId}/users`);
+        }
+        usersGrid.innerHTML = users
+          .map(
+            (u) => `
+                <div class="card" data-user-id="${u.id}">
+                  ${u.firstname} ${u.lastname}
+                </div>`
+          )
+          .join("");
+        usersGrid.querySelectorAll(".card").forEach((card) => {
+          card.addEventListener("click", () => {
+            usersGrid
+              .querySelectorAll(".card")
+              .forEach((c) => c.classList.remove("selected"));
+            card.classList.add("selected");
+            selectedUserId = card.dataset.userId;
+            startBtn.disabled = false;
+          });
+        });
+        startBtn.disabled = true;
+      }
+
+      // 3) Bouton “Je suis prêt !”
+      startBtn.addEventListener("click", async () => {
+        if (!selectedUserId) return;
+        try {
+          // 3a) configure userId + active servo
+          await fetchJSON("http://localhost:5000/servo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: +selectedUserId }),
+          });
+          // 3b) affiche la pop-up
+          popupOvl.style.display = "flex";
+          // planifie fermeture auto
+          autoCloseTimer = setTimeout(closePopup, 30000);
+        } catch (e) {
+          console.error("Erreur servo :", e);
+          alert("Erreur servo : " + e.message);
+        } finally {
+          usersGridTitle.style.display = "none";
+          usersGrid.style.display = "none";
+        }
+      });
+
+      // appelle /reset_user, cache pop-up
+      async function closePopup() {
+        popupOvl.style.display = "none";
+        startBtn.disabled = true;
+        selectedUserId = null;
+        teamsGrid
+          .querySelectorAll(".card, #usersGrid .card")
+          .forEach((c) => c.classList.remove("selected"));
+        if (autoCloseTimer) {
+          clearTimeout(autoCloseTimer);
+          autoCloseTimer = null;
+        }
+        try {
+          await fetchJSON("http://localhost:5000/reset_user", {
+            method: "POST",
+          });
+        } catch (e) {
+          console.error("reset_user failed:", e);
+        }
+      }
+
+      // fermeture manuelle
+      popupClose.addEventListener("click", closePopup);
+    </script>
+  </body>
+</html>

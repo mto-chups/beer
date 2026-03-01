@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>BestScoreboard</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+        background-color: rgb(51, 51, 51);
+        color: antiquewhite;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        text-align: center;
+      }
+      h1.team-name {
+        font-size: 8rem;
+        margin-bottom: 0.2em;
+      }
+      div.team-points {
+        font-size: 5rem;
+        font-weight: bold;
+        margin-bottom: 0.5em;
+      }
+      div.user-scores {
+        margin: 1em 0;
+        color: rgba(250, 235, 215, 0.74);
+        font-size: 1.2rem;
+      }
+      div.user-scores div {
+        font-size: 1.1rem;
+        margin: 0.2em 0;
+        font-size: 1.1rem;
+      }
+      div.ranking {
+        margin-top: 2em;
+        text-align: left;
+      }
+      div.ranking h2 {
+        font-size: 3rem;
+        margin-bottom: 0.4em;
+        text-align: center;
+      }
+      div.ranking ol {
+        font-size: 1.5rem;
+        text-align: center;
+        padding-left: 2em;
+      }
+      div.ranking li {
+        margin: 0.2em 0;
+      }
+
+      div.ranking li {
+        background-color: rgb(26, 26, 26);
+      }
+      div.ranking li:nth-child(odd) {
+        background-color: rgb(41, 41, 41);
+      }
+      div.ranking li:nth-child(1) {
+        background-color: rgb(197, 161, 0);
+      }
+
+      @keyframes score-update {
+        0% {
+          transform: scale(1);
+          color: white;
+          text-shadow: none;
+        }
+        65% {
+          transform: scale(1.3);
+          color: gold;
+          text-shadow: 0 0 10px gold;
+        }
+        100% {
+          transform: scale(1);
+          color: antiquewhite;
+          text-shadow: none;
+        }
+      }
+
+      .team-points.update {
+        animation: score-update 0.6s ease-out;
+      }
+
+      .bubble-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none; /* pour ne pas bloquer les clics */
+        overflow: hidden;
+        z-index: 0;
+      }
+
+      .bubble {
+        position: absolute;
+        bottom: 0;
+        width: 10px;
+        height: 10px;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        animation: rise 4s linear forwards;
+      }
+
+      @keyframes rise {
+        0% {
+          transform: translateY(0) scale(1);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(-100vh) scale(1.5);
+          opacity: 0;
+        }
+      }
+
+      #score-video-container {
+        display: none;
+        width: 100%;
+        margin-top: 2rem;
+
+        display: flex; /* flex centré */
+        justify-content: center; /* centre horizontalement */
+        align-items: center; /* centre verticalement si besoin */
+      }
+
+      #score-video {
+        display: inline-block; /* pour que le centrage fonctionne */
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bubble-container"></div>
+
+    <div class="container">
+      <h1 class="team-name"></h1>
+      <div class="team-points"></div>
+
+      <div class="user-scores">
+        <h2>Détails de l'équipe</h2>
+        <!-- listé ici -->
+      </div>
+
+      <div class="ranking">
+        <h2>Classement général</h2>
+        <ol></ol>
+        <p class="your-rank" style="text-align: center"></p>
+      </div>
+    </div>
+    <div id="score-video-container">
+      <video id="score-video" width="18%" autoplay muted>
+        <source src="../assets/beer+1.mp4" type="video/mp4" />
+        Votre navigateur ne supporte pas la lecture vidéo.
+      </video>
+    </div>
+
+    <script>
+      // ────────────────────────────────────────
+      // 1) Bulles d’arrière-plan
+      // ────────────────────────────────────────
+      function spawnBubble() {
+        const container = document.querySelector(".bubble-container");
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        const size = Math.random() * 8 + 6; // 4px à 12px
+        bubble.style.width = `${size}px`;
+        bubble.style.height = `${size}px`;
+        bubble.style.left = `${Math.random() * 100}%`;
+        bubble.style.animationDuration = `${Math.random() * 4 + 4}s`;
+        container.appendChild(bubble);
+        setTimeout(() => bubble.remove(), 10000);
+      }
+      setInterval(() => {
+        if (Math.random() < 0.6) spawnBubble();
+      }, 300);
+
+      // ────────────────────────────────────────
+      // 2) Utilitaires fetch
+      // ────────────────────────────────────────
+      async function fetchJSON(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.statusText);
+        return r.json();
+      }
+      //Mémoire
+      let previousScore = null;
+
+      // ────────────────────────────────────────
+      // 3) Initialisation et mise à jour
+      // ────────────────────────────────────────
+      async function updateDisplay() {
+        // 1) Classement global
+        const ranking = await fetchJSON("/stats/equipes/scores");
+        const best = ranking[0];
+        // 2) Nom & points
+        document.querySelector(".team-name").textContent = best.teamName;
+        const ptsDiv = document.querySelector(".team-points");
+        const newScore = best.points;
+
+        // Si le score a changé, on met à jour et on anime
+        if (previousScore !== newScore) {
+          ptsDiv.textContent = newScore;
+          if (previousScore !== null) {
+            ptsDiv.classList.add("update");
+            ptsDiv.addEventListener(
+              "animationend",
+              () => {
+                ptsDiv.classList.remove("update");
+
+                // Lecture de la vidéo
+                const container = document.getElementById(
+                  "score-video-container"
+                );
+                const video = document.getElementById("score-video");
+
+                container.style.display = "flex";
+                video.currentTime = 0;
+                video.play().catch((e) => console.error("Erreur vidéo :", e));
+
+                // Quand la vidéo est terminée, on la masque
+                video.onended = () => {
+                  container.style.display = "none";
+                };
+              },
+              { once: true }
+            );
+          }
+          previousScore = newScore;
+        }
+
+        // 3) Détails de l’équipe
+        const users = await fetchJSON(
+          `/stats/utilisateurs?equipe=${best.teamId}`
+        );
+        const usersDiv = document.querySelector(".user-scores");
+        // Remise à zéro (on conserve le <h2>)
+        usersDiv.querySelectorAll("div").forEach((d) => d.remove());
+        users.forEach((u) => {
+          const d = document.createElement("div");
+          d.textContent = `🍺 ${u.firstName} : ${u.points} bières`;
+          usersDiv.appendChild(d);
+        });
+
+        // 4) Classement général
+        const ol = document.querySelector(".ranking ol");
+        ol.innerHTML = ""; // remet à zéro
+        ranking.forEach((team, idx) => {
+          const li = document.createElement("li");
+          li.textContent = `${team.teamName} : ${team.points} pts`;
+          // applique style 1er, 2nd, etc si tu veux
+          ol.appendChild(li);
+        });
+
+        // // 5) Affiche ton rang
+        // const yourRankP = document.querySelector(".your-rank");
+        // const yourIdx = ranking.findIndex((t) => t.teamId === best.teamId);
+        // yourRankP.textContent =
+        //   yourIdx >= 0 ? `Votre équipe est #${yourIdx + 1}` : "";
+      }
+
+      // ────────────────────────────────────────
+      // 4) Polling toutes les 5 s
+      // ────────────────────────────────────────
+      async function refresh() {
+        try {
+          await updateDisplay();
+        } catch (err) {
+          console.error("Erreur dans le polling :", err);
+        }
+      }
+      // Lancement
+      refresh();
+      setInterval(refresh, 5000);
+    </script>
+  </body>
+</html>

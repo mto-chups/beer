@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mon BAC</title>
+    <!-- 1) Chart.js v4 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <!-- 2) Adapter date-fns v3 pour les axes time -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+    <!-- 3) Plugin Annotation -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.1.1"></script>
+  </head>
+  <body data-user-id="2">
+    <h1>Taux d'alcoolémie</h1>
+    <canvas id="bacChart" width="800" height="400"></canvas>
+    <script>
+      (async () => {
+        // 1) Defaults pour éviter hitRadius non défini
+        Chart.defaults.elements.point = {
+          radius: 3,
+          hoverRadius: 5,
+          hitRadius: 5,
+        };
+
+        // 2) Récupérer l’ID et les données
+        const userId = document.body.dataset.userId;
+        const resp = await fetch(`/api/beerbu/bac/data/${userId}`);
+        const { history } = await resp.json();
+
+        // 3) Préparer labels + data + timestamp "maintenant"
+        const labels = history.map((p) => p.ts);
+        const data = history.map((p) => p.bac);
+        const nowIso = new Date().toISOString();
+
+        // 4) Créer le chart (le plugin d’annotation est déjà actif)
+        new Chart(document.getElementById("bacChart"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Taux d'alcoolémie (dernières 24 h)",
+                data,
+                borderColor: "blue",
+                fill: false,
+              },
+            ],
+          },
+          options: {
+            plugins: {
+              annotation: {
+                annotations: {
+                  nowLine: {
+                    type: "line",
+                    xMin: nowIso,
+                    xMax: nowIso,
+                    borderColor: "green",
+                    borderWidth: 2,
+                    label: {
+                      enabled: true,
+                      position: "top",
+                      content: "Maintenant",
+                    },
+                  },
+                },
+              },
+            },
+            scales: {
+              x: {
+                type: "time",
+                time: { unit: "hour", tooltipFormat: "HH:mm" },
+                title: { display: true, text: "Heure" },
+              },
+              y: {
+                title: { display: true, text: "g/L" },
+              },
+            },
+          },
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,3 @@
+*.rar
+serial/node_modules
+/db/

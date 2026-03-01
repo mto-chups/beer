@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Connexion</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 400px;
+        margin: 2rem auto;
+      }
+      label,
+      select,
+      button {
+        display: block;
+        width: 100%;
+        margin-bottom: 1rem;
+      }
+      button {
+        padding: 0.8rem;
+        background: #1879e3;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 1.1rem;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Choisissez votre équipe</h1>
+    <label>
+      Équipe
+      <select id="teamSelect">
+        <option value="">Chargement…</option>
+      </select>
+    </label>
+
+    <h2>Choisissez votre nom</h2>
+    <label>
+      Utilisateur
+      <select id="userSelect" disabled>
+        <option value="">—</option>
+      </select>
+    </label>
+
+    <button id="startBtn" disabled>Je suis prêt !</button>
+
+    <script>
+      async function fetchJSON(url) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(res.statusText);
+        return res.json();
+      }
+
+      const teamSel = document.getElementById("teamSelect");
+      const userSel = document.getElementById("userSelect");
+      const startBtn = document.getElementById("startBtn");
+
+      // 1) Chargement des équipes
+      fetchJSON("/api/teams")
+        .then((teams) => {
+          teamSel.innerHTML =
+            '<option value="">-- Choisir une équipe --</option>' +
+            teams
+              .map((t) => `<option value="${t.id}">${t.name}</option>`)
+              .join("");
+        })
+        .catch((e) => {
+          console.error(e);
+          teamSel.innerHTML = '<option value="">Erreur de chargement</option>';
+        });
+
+      // 2) Lorsqu’on sélectionne une équipe, on charge ses users
+      teamSel.onchange = async () => {
+        const tid = teamSel.value;
+        userSel.disabled = true;
+        startBtn.disabled = true;
+
+        if (!tid) {
+          userSel.innerHTML = '<option value="">—</option>';
+          return;
+        }
+
+        let users;
+        try {
+          users = await fetchJSON(`/api/teams/${tid}/users`);
+        } catch {
+          users = await fetchJSON("/api/users");
+          users = users.filter((u) => u.team_id == tid);
+        }
+
+        userSel.innerHTML =
+          '<option value="">-- Choisir --</option>' +
+          users
+            .map(
+              (u) =>
+                `<option value="${u.id}">${u.firstname} ${u.lastname}</option>`
+            )
+            .join("");
+        userSel.disabled = false;
+      };
+
+      // 3) Activation du bouton
+      userSel.onchange = () => {
+        startBtn.disabled = !userSel.value;
+      };
+
+      // 4) Au clic, on déclenche le servo puis on crée la session
+      startBtn.onclick = async () => {
+        const userId = userSel.value;
+        // 1) on déclenche le servo
+        try {
+          const r = await fetch("http://localhost:5000/servo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId }),
+          });
+          if (!r.ok) throw new Error(await r.text());
+          alert("Servo actionné, prêt à scanner !");
+          // par ex. redirection : location.href = `/scan.html?user=${userId}`;
+        } catch (e) {
+          console.error("Erreur servo:", e);
+          alert("Erreur servo : " + e);
+        }
+      };
+    </script>
+  </body>
+</html>

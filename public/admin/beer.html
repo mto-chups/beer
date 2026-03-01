@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Admin - Ajouter une bière</title>
+    <style>
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 20px;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 6px;
+      }
+      th {
+        background: #eee;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Ajouter une bière</h1>
+    <form id="beerForm">
+      <input type="text" name="brand" placeholder="Marque" required />
+      <input
+        type="text"
+        name="type"
+        placeholder="Type (blonde, brune...)"
+        required
+      />
+      <input
+        type="number"
+        name="volume_ml"
+        placeholder="Quantité (cl)"
+        required
+      />
+      <input
+        type="number"
+        name="alcohol_degree"
+        step="0.1"
+        placeholder="Degré d'alcool (%)"
+        required
+      />
+
+      <button type="submit">Ajouter</button>
+    </form>
+
+    <h2>Bières existantes</h2>
+    <table id="beersTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Marque</th>
+          <th>Type</th>
+          <th>Quantité (ml)</th>
+          <th>Degré (%)</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div id="result"></div>
+
+    <script>
+      async function fetchBeers() {
+        const res = await fetch("/api/beers");
+        const beers = await res.json();
+        const tbody = document.querySelector("#beersTable tbody");
+        tbody.innerHTML = "";
+
+        beers.forEach((beer) => {
+          tbody.innerHTML += `<tr data-beer-id="${beer.id}">
+            <td>${beer.id}</td>
+            <td>${beer.brand}</td>
+            <td>${beer.type}</td>
+            <td>${Number(beer.volume_ml).toFixed(2)}</td>
+            <td>${Number(beer.alcohol_degree).toFixed(2)}</td>
+            <td>
+              <button onclick="editBeer(${beer.id})">Modifier</button>
+              <button onclick="deleteBeer(${beer.id})">Supprimer</button>
+            </td>
+          </tr>`;
+        });
+      }
+
+      document.getElementById("beerForm").onsubmit = async function (e) {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(this));
+
+        const res = await fetch("/api/beers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+        const result = await res.json();
+        document.getElementById("result").innerText = result.message;
+        this.reset();
+        fetchBeers();
+      };
+
+      window.deleteBeer = async function (id) {
+        if (!confirm("Supprimer cette bière ?")) return;
+        await fetch(`/api/beers/${id}`, { method: "DELETE" });
+        fetchBeers();
+      };
+
+      window.editBeer = async function (id) {
+        const row = document.querySelector(`tr[data-beer-id='${id}']`);
+        const brand = prompt("Nouvelle marque :", row.children[1].innerText);
+        if (brand === null) return;
+        const type = prompt("Nouveau type :", row.children[2].innerText);
+        if (type === null) return;
+
+        const volume_ml =
+          Math.round(
+            parseFloat(
+              prompt("Nouvelle quantité (ml) :", row.children[3].innerText)
+            ) * 100
+          ) / 100;
+        if (isNaN(volume_ml)) return alert("Valeur non valide !");
+
+        const alcohol_degree =
+          Math.round(
+            parseFloat(
+              prompt("Nouveau degré d'alcool (%) :", row.children[4].innerText)
+            ) * 100
+          ) / 100;
+        if (isNaN(alcohol_degree)) return alert("Valeur non valide !");
+
+        const res = await fetch(`/api/beers/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ brand, type, volume_ml, alcohol_degree }),
+        });
+
+        const json = await res.json();
+        alert(json.message);
+        fetchBeers();
+      };
+
+      fetchBeers();
+    </script>
+  </body>
+</html>

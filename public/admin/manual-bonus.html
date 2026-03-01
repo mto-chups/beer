@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ajouter un bonus manuel</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        background: #f7f7f7;
+        padding: 2rem;
+      }
+      form {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        max-width: 500px;
+        margin: auto;
+      }
+      label {
+        display: block;
+        margin-top: 1rem;
+      }
+      input,
+      select,
+      textarea,
+      button {
+        width: 100%;
+        padding: 0.5rem;
+        margin-top: 0.3rem;
+        box-sizing: border-box;
+      }
+      textarea {
+        resize: vertical;
+      }
+      .flash {
+        padding: 0.6rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+      }
+      .success {
+        background: #d4edda;
+        color: #155724;
+      }
+      .error {
+        background: #f8d7da;
+        color: #721c24;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 style="text-align: center">Ajouter un bonus manuel</h1>
+    <div id="flash-container"></div>
+    <form id="bonusForm">
+      <label>
+        Équipe
+        <select name="teamId" id="teamSelect" required>
+          <option value="">Chargement…</option>
+        </select>
+      </label>
+      <label>
+        Points (+ ou −)
+        <input type="number" name="points" required />
+      </label>
+      <label>
+        Commentaire (optionnel)
+        <textarea name="reason" rows="3"></textarea>
+      </label>
+      <button type="submit">Enregistrer le bonus</button>
+    </form>
+
+    <script>
+      function flash(msg, type = "success") {
+        const d = document.createElement("div");
+        d.className = `flash ${type}`;
+        d.textContent = msg;
+        document.getElementById("flash-container").append(d);
+        setTimeout(() => d.remove(), 4000);
+      }
+      async function fetchJSON(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.statusText);
+        return r.json();
+      }
+
+      // 1) Charger les équipes et leurs membres
+      async function loadTeams() {
+        try {
+          // Récupère d'abord la liste des équipes
+          const teams = await fetchJSON("/api/teams");
+          const sel = document.getElementById("teamSelect");
+          sel.innerHTML = '<option value="">-- Choisir une équipe --</option>';
+
+          // Pour chaque équipe, on récupère ses utilisateurs
+          await Promise.all(
+            teams.map(async (t) => {
+              let users = [];
+              try {
+                users = await fetchJSON(`/api/teams/${t.id}/users`);
+              } catch {
+                // si cette route n'existe pas, tu peux la remplacer
+                // par un fetchAllUsers() et filtrer par team_id côté client
+              }
+              const names = users.map((u) => u.first_name).join(", ");
+              const opt = document.createElement("option");
+              opt.value = t.id;
+              opt.textContent = `${t.name}${names ? " (" + names + ")" : ""}`;
+              sel.appendChild(opt);
+            })
+          );
+        } catch (e) {
+          flash("Impossible de charger les équipes", "error");
+          console.error(e);
+        }
+      }
+
+      // 2) Soumission du formulaire
+      document.getElementById("bonusForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target));
+        try {
+          const r = await fetch("/api/manual_bonus", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+          const json = await r.json();
+          if (r.ok) {
+            flash("Bonus enregistré ✔️", "success");
+            e.target.reset();
+          } else {
+            flash(json.message || "Erreur serveur", "error");
+          }
+        } catch (err) {
+          flash("Erreur réseau", "error");
+          console.error(err);
+        }
+      };
+
+      // initialisation
+      loadTeams();
+    </script>
+  </body>
+</html>
