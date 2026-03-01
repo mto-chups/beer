@@ -1,6 +1,5 @@
 import { db } from '../config/db';
 import { BeerBu } from '../models/beerBu';
-import { differenceInMinutes } from 'date-fns';
 import { RowDataPacket } from 'mysql2';
 
 
@@ -65,10 +64,11 @@ export const computeBacCurve = async (userId: number): Promise<Point[]> => {
   const r    = user.gender === 'M' ? 0.68 : 0.55;
   const beta = 0.15; // g/L/h
 
-  // --- 4) Fenêtre fixe : dernières 24h ---
-  const nowTs   = Date.now();
-  const startTs = new Date("2025-06-15T11:00:00").getTime();
-  const endTs   = new Date("2025-06-15T23:00:00").getTime();
+  // --- 4) Fenêtre glissante sur les dernières 24h ---
+  const nowTs = Date.now();
+  const firstDrinkTs = new Date(drinks[0].drankAt).getTime();
+  const startTs = Math.max(firstDrinkTs, nowTs - 24 * 60 * 60 * 1000);
+  const endTs = nowTs;
 
   // --- 5) Boucle minute-par-minute ---
   const allPoints: Point[] = [];

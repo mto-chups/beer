@@ -1,7 +1,6 @@
 // src/server.ts
 import dotenv from 'dotenv';
 import app from './app';
-  import listEndpoints from 'express-list-endpoints';
 
 dotenv.config();
 

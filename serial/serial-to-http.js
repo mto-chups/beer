@@ -2,12 +2,10 @@
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
 const axios = require('axios');
-const FIXED_USER_ID = 1; // provisoire: à remplacer par le vrai user choisi sur ce poste
-
 
 const PORT = 'COM5';          // adapter selon votre OS (/dev/ttyACM0, /dev/ttyUSB0…)
 const BAUD = 9600;
-const API_URL = 'http://localhost:3000/api/beerbu/consume';
+const API_URL = 'http://localhost:3000/api/beerbu/consume-current';
 
 const port = new SerialPort({ path: PORT, baudRate: BAUD });
 const parser = port.pipe(new ReadlineParser({ delimiter: '\r\n' }));
@@ -18,10 +16,14 @@ parser.on('data', async (line) => {
   try {
     // Exemple de line: {"uid":"E659A700"}
     const { uid } = JSON.parse(line);
-    console.log(`Lecture UID=${uid}, envoi HTTP…`);
-    const resp = await axios.post(API_URL, { uid, userId: FIXED_USER_ID });
+    console.log(`Lecture UID=${uid}, envoi vers ${API_URL}...`);
+    const resp = await axios.post(API_URL, { uid });
     console.log(`Status ${resp.status}:`, resp.data);
   } catch (err) {
+    if (err.response) {
+      console.error(`Erreur HTTP ${err.response.status}:`, err.response.data);
+      return;
+    }
     console.error('Erreur traitement ligne série ou requête HTTP', err.message);
   }
 });

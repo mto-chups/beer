@@ -46,6 +46,27 @@ export const fetchAllUsers = async (): Promise<User[]> => {
   return rows as User[];
 };
 
+export const findUserById = async (id: number): Promise<User | null> => {
+  const [rows] = await db.execute(
+    `SELECT
+       id,
+       first_name AS firstname,
+       last_name AS lastname,
+       phone,
+       weight,
+       age,
+       gender,
+       team_id
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [id]
+  );
+
+  const user = (rows as User[])[0];
+  return user ?? null;
+};
+
 export const removeUser = async (id: number) => {
   await db.execute('DELETE FROM users WHERE id = ?', [id]);
 };

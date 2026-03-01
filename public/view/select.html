@@ -222,6 +222,7 @@
       const evt = new EventSource("/api/scan_callback/events");
       const gifContainer = document.getElementById("gifContainer");
       const target = document.body;
+      const KIOSK_SESSION_URL = "/api/kiosk-session/current";
       // génère un 🍺 qui monte
       function spawnBeer() {
         const beer = document.createElement("div");
@@ -308,7 +309,15 @@
 
       async function fetchJSON(url, opts = {}) {
         const res = await fetch(url, opts);
-        if (!res.ok) throw new Error(res.statusText);
+        if (!res.ok) {
+          let message = res.statusText;
+          try {
+            const data = await res.json();
+            message = data.message || message;
+          } catch (_) {}
+          throw new Error(message);
+        }
+        if (res.status === 204) return null;
         return res.json();
       }
 
@@ -387,19 +396,16 @@
       startBtn.addEventListener("click", async () => {
         if (!selectedUserId) return;
         try {
-          // 3a) configure userId + active servo
-          await fetchJSON("http://localhost:5000/servo", {
+          await fetchJSON(KIOSK_SESSION_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ userId: +selectedUserId }),
           });
-          // 3b) affiche la pop-up
           popupOvl.style.display = "flex";
-          // planifie fermeture auto
           autoCloseTimer = setTimeout(closePopup, 30000);
         } catch (e) {
-          console.error("Erreur servo :", e);
-          alert("Erreur servo : " + e.message);
+          console.error("Erreur session borne :", e);
+          alert("Erreur borne : " + e.message);
         } finally {
           usersGridTitle.style.display = "none";
           usersGrid.style.display = "none";
@@ -419,11 +425,11 @@
           autoCloseTimer = null;
         }
         try {
-          await fetchJSON("http://localhost:5000/reset_user", {
-            method: "POST",
+          await fetchJSON(KIOSK_SESSION_URL, {
+            method: "DELETE",
           });
         } catch (e) {
-          console.error("reset_user failed:", e);
+          console.error("Effacement session borne impossible:", e);
         }
       }
 

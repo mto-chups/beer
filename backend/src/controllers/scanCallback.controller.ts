@@ -3,6 +3,13 @@ import { Request, Response } from 'express';
 // On garde en mémoire tous les clients SSE connectés
 const clients: Response[] = [];
 
+export function broadcastScanEvent(payload: unknown) {
+  const s = JSON.stringify(payload);
+  clients.forEach((client) => {
+    client.write(`data: ${s}\n\n`);
+  });
+}
+
 /**
  * Abonne un client à l’EventStream.
  */
@@ -35,12 +42,7 @@ export function initScanCallback(req: Request, res: Response) {
  */
 export function sendScanCallback(req: Request, res: Response) {
   const payload = req.body;
-  const s = JSON.stringify(payload);
-
-  // envoie à tous les clients SSE
-  clients.forEach((client) => {
-    client.write(`data: ${s}\n\n`);
-  });
+  broadcastScanEvent(payload);
 
   // On répond HTTP 204 (pas de contenu)
   res.status(204).end();
