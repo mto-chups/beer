@@ -1,11 +1,13 @@
 // src/controllers/beerBu.controller.ts
 import { Request, Response, NextFunction  } from 'express';
 import path from 'path';
-import { computeBacCurve } from '../services/beerBu.service';
+import { computeBacCurve, consumeBeerScan, recordBeerConsumed, rejectScan } from '../services/beerBu.service';
 import { findRfidTagByUid } from '../services/rfidTag.service';
-import { recordBeerConsumed } from '../services/beerBu.service';
 import { getCurrentUserId, clearCurrentUserId } from '../services/kioskSession.service';
 import { broadcastScanEvent } from './scanCallback.controller';
+import { StatsService } from '../services/stats.service';
+import { broadcastScoreUpdate } from '../services/scoreStream.service';
+import { appendScanAuditLog } from '../services/scanAuditLog.service';
 
 const consumeBeerForUser = async (uid: string, userId: number) => {
   const tag = await findRfidTagByUid(uid);
@@ -46,43 +48,103 @@ export const consumeBeer = async (req: Request, res: Response) => {
 
 export const consumeBeerForCurrentUser = async (req: Request, res: Response) => {
   try {
-    const uid = req.body.uid || req.query.uid;
-    if (!uid) {
-      return res.status(400).json({ message: 'UID requis' });
+    const uid = String(req.body.uid || req.query.uid || '').trim().toUpperCase();
+    const scanId = String(req.body.scanId || req.query.scanId || '').trim();
+    const scannedAtRaw = req.body.scannedAt || req.query.scannedAt;
+    const source = String(req.body.source || req.query.source || 'serial-bridge');
+
+    if (!uid || !scanId) {
+      return res.status(400).json({
+        message: 'scanId et UID requis',
+        status: 'rejected_final',
+        code: 'invalid_payload',
+      });
     }
 
-    const userId = getCurrentUserId();
+    const scannedAt = scannedAtRaw ? new Date(String(scannedAtRaw)) : new Date();
+    const userId = await getCurrentUserId();
     if (!userId) {
+      const rejection = await rejectScan({
+        scanId,
+        uid,
+        scannedAt,
+        source,
+        errorCode: 'no_current_user',
+        errorMessage: 'Aucun utilisateur sélectionné sur la borne',
+      });
       const payload = {
+        scanId,
         uid,
         success: false,
-        message: 'Aucun utilisateur sélectionné sur la borne'
+        message: rejection.message,
+        code: rejection.code,
       };
       broadcastScanEvent(payload);
-      return res.status(409).json({ message: payload.message });
+      return res.status(409).json(rejection);
     }
 
-    const { id, score } = await consumeBeerForUser(uid, userId);
-    const payload = {
+    const result = await consumeBeerScan({
+      scanId,
       uid,
       userId,
-      success: true,
-      message: 'Bière consommée enregistrée',
-      score,
-      id
-    };
-    broadcastScanEvent(payload);
-    clearCurrentUserId();
-
-    return res.status(201).json({
-      message: payload.message,
-      id,
-      score,
-      userId
+      scannedAt: Number.isNaN(scannedAt.getTime()) ? new Date() : scannedAt,
+      source,
     });
+
+    if (result.response.status === 'committed') {
+      if (result.newlyCommitted) {
+        const payload = {
+          scanId,
+          uid,
+          userId,
+          success: true,
+          message: 'Biere consommee enregistree',
+          score: result.response.score,
+          id: result.response.id,
+        };
+        broadcastScanEvent(payload);
+        await appendScanAuditLog({
+          scanId,
+          uid,
+          userId,
+          phase: 'broadcasted',
+          status: 'success',
+          beerBuId: result.response.id ?? null,
+          score: result.response.score ?? null,
+        });
+        const scorePayload = await StatsService.getScoreStreamPayload(scanId, userId);
+        broadcastScoreUpdate(scorePayload);
+      }
+
+      await clearCurrentUserId();
+      return res.status(result.response.duplicate ? 200 : 201).json(result.response);
+    }
+
+    if (result.response.status === 'rejected_final') {
+      broadcastScanEvent({
+        scanId,
+        uid,
+        userId,
+        success: false,
+        message: result.response.message,
+        code: result.response.code,
+      });
+      return res.status(409).json(result.response);
+    }
+
+    broadcastScanEvent({
+      scanId,
+      uid,
+      userId,
+      success: false,
+      message: result.response.message,
+      code: result.response.code,
+    });
+    return res.status(503).json(result.response);
   } catch (err: any) {
     const status = err.status || 500;
     const payload = {
+      scanId: req.body.scanId || req.query.scanId || null,
       uid: req.body.uid || req.query.uid || null,
       success: false,
       message: err.message || 'Erreur serveur'

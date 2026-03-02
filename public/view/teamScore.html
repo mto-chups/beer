@@ -171,11 +171,20 @@
         throw new Error("Missing equipe param");
       }
 
-      // met à jour l'affichage
-      async function updateDisplay() {
-        // 1) classement global
-        const ranking = await fetchJSON("/api/stats/equipes/scores");
-        // trouve ton équipe
+      function readCurrentUsersFromDom() {
+        return Array.from(document.querySelectorAll(".user-scores div")).map(
+          (node) => {
+            const text = node.textContent || "";
+            const parts = text.split(" : ");
+            return {
+              firstName: parts[0] || "",
+              points: Number((parts[1] || "0").split(" ")[0]) || 0,
+            };
+          }
+        );
+      }
+
+      function renderState(ranking, users) {
         const teamInfo = ranking.find((t) => t.teamId === equipeId);
         if (!teamInfo) {
           throw new Error(`Aucune équipe pour ID=${equipeId}`);
@@ -184,10 +193,8 @@
         const newScore = teamInfo.points;
 
         if (previousScore !== newScore) {
-          // Si on a déjà un précédent et que le score a augmenté
           if (previousScore !== null && newScore > previousScore) {
             ptsDiv.classList.add("pulse");
-            // on retire la classe après l'animation pour pouvoir la rejouer
             ptsDiv.addEventListener(
               "animationend",
               () => {
@@ -196,29 +203,21 @@
               { once: true }
             );
           }
-          // Mettre à jour le contenu du score
           ptsDiv.textContent = newScore;
           previousScore = newScore;
         }
-        // 2) nom + points
+
         document.querySelector(".team-name").textContent = teamInfo.teamName;
         document.querySelector(".team-points").textContent = teamInfo.points;
 
-        // 3) scores individuels
-        const users = await fetchJSON(`/api/stats/utilisateurs?equipe=${equipeId}`);
         const usersDiv = document.querySelector(".user-scores");
-        // efface les anciens
-        usersDiv.querySelectorAll("div").forEach((d) => {
-          if (!d.matches("h2")) d.remove();
-        });
-        // ajoute les nouveaux
+        usersDiv.querySelectorAll("div").forEach((d) => d.remove());
         users.forEach((u) => {
           const d = document.createElement("div");
           d.textContent = `${u.firstName} : ${u.points} bières`;
           usersDiv.appendChild(d);
         });
 
-        // 4) classement général
         const ol = document.querySelector(".ranking ol");
         ol.innerHTML = "";
         ranking.forEach((t) => {
@@ -227,12 +226,42 @@
           ol.appendChild(li);
         });
 
-        // 5) ta position
         const pos = ranking.findIndex((t) => t.teamId === equipeId);
         document.querySelector(".your-rank").textContent =
           pos >= 0
             ? `Votre équipe est à la place ${pos + 1} sur ${ranking.length}.`
             : "";
+      }
+
+      async function updateDisplay() {
+        const ranking = await fetchJSON("/api/stats/equipes/scores");
+        const users = await fetchJSON(`/api/stats/utilisateurs?equipe=${equipeId}`);
+        renderState(ranking, users);
+      }
+
+      function connectScoreStream() {
+        const source = new EventSource("/api/stats/stream");
+
+        source.addEventListener("score-update", (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            if (!Array.isArray(payload.ranking)) return;
+
+            if (payload.teamId === equipeId) {
+              renderState(payload.ranking, payload.userScores || []);
+              return;
+            }
+
+            renderState(payload.ranking, readCurrentUsersFromDom());
+          } catch (err) {
+            console.error("Erreur score-update:", err);
+          }
+        });
+
+        source.onerror = () => {
+          source.close();
+          setTimeout(connectScoreStream, 5000);
+        };
       }
 
       // fonction de polling
@@ -244,9 +273,10 @@
         }
       }
 
-      // lancement immédiat + toutes les 5s
+      // lancement immédiat + SSE + resync
       refresh();
-      setInterval(refresh, 5000);
+      connectScoreStream();
+      setInterval(refresh, 30000);
     </script>
   </body>
 </html>

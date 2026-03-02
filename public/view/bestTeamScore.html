@@ -190,16 +190,13 @@
       // ────────────────────────────────────────
       // 3) Initialisation et mise à jour
       // ────────────────────────────────────────
-      async function updateDisplay() {
-        // 1) Classement global
-        const ranking = await fetchJSON("/api/stats/equipes/scores");
-        const best = ranking[0];
-        // 2) Nom & points
+      function renderState(ranking, best, users) {
+        if (!best) return;
+
         document.querySelector(".team-name").textContent = best.teamName;
         const ptsDiv = document.querySelector(".team-points");
         const newScore = best.points;
 
-        // Si le score a changé, on met à jour et on anime
         if (previousScore !== newScore) {
           ptsDiv.textContent = newScore;
           if (previousScore !== null) {
@@ -208,8 +205,6 @@
               "animationend",
               () => {
                 ptsDiv.classList.remove("update");
-
-                // Lecture de la vidéo
                 const container = document.getElementById(
                   "score-video-container"
                 );
@@ -218,8 +213,6 @@
                 container.style.display = "flex";
                 video.currentTime = 0;
                 video.play().catch((e) => console.error("Erreur vidéo :", e));
-
-                // Quand la vidéo est terminée, on la masque
                 video.onended = () => {
                   container.style.display = "none";
                 };
@@ -230,12 +223,7 @@
           previousScore = newScore;
         }
 
-        // 3) Détails de l’équipe
-        const users = await fetchJSON(
-          `/api/stats/utilisateurs?equipe=${best.teamId}`
-        );
         const usersDiv = document.querySelector(".user-scores");
-        // Remise à zéro (on conserve le <h2>)
         usersDiv.querySelectorAll("div").forEach((d) => d.remove());
         users.forEach((u) => {
           const d = document.createElement("div");
@@ -243,25 +231,56 @@
           usersDiv.appendChild(d);
         });
 
-        // 4) Classement général
         const ol = document.querySelector(".ranking ol");
-        ol.innerHTML = ""; // remet à zéro
-        ranking.forEach((team, idx) => {
+        ol.innerHTML = "";
+        ranking.forEach((team) => {
           const li = document.createElement("li");
           li.textContent = `${team.teamName} : ${team.points} pts`;
-          // applique style 1er, 2nd, etc si tu veux
           ol.appendChild(li);
         });
+      }
 
-        // // 5) Affiche ton rang
-        // const yourRankP = document.querySelector(".your-rank");
-        // const yourIdx = ranking.findIndex((t) => t.teamId === best.teamId);
-        // yourRankP.textContent =
-        //   yourIdx >= 0 ? `Votre équipe est #${yourIdx + 1}` : "";
+      async function updateDisplay() {
+        const ranking = await fetchJSON("/api/stats/equipes/scores");
+        const best = ranking[0];
+        const users = best
+          ? await fetchJSON(`/api/stats/utilisateurs?equipe=${best.teamId}`)
+          : [];
+        renderState(ranking, best, users);
+      }
+
+      function connectScoreStream() {
+        const source = new EventSource("/api/stats/stream");
+
+        source.addEventListener("score-update", (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            if (!Array.isArray(payload.ranking) || payload.ranking.length === 0) {
+              return;
+            }
+
+            renderState(
+              payload.ranking,
+              {
+                teamId: payload.bestTeamId,
+                teamName: payload.bestTeamName,
+                points: payload.bestTeamPoints,
+              },
+              payload.bestTeamUsers || []
+            );
+          } catch (err) {
+            console.error("Erreur score-update:", err);
+          }
+        });
+
+        source.onerror = () => {
+          source.close();
+          setTimeout(connectScoreStream, 5000);
+        };
       }
 
       // ────────────────────────────────────────
-      // 4) Polling toutes les 5 s
+      // 4) SSE + resynchronisation
       // ────────────────────────────────────────
       async function refresh() {
         try {
@@ -272,7 +291,8 @@
       }
       // Lancement
       refresh();
-      setInterval(refresh, 5000);
+      connectScoreStream();
+      setInterval(refresh, 30000);
     </script>
   </body>
 </html>

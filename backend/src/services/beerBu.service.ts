@@ -1,6 +1,18 @@
+import { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { db } from '../config/db';
 import { BeerBu } from '../models/beerBu';
-import { RowDataPacket } from 'mysql2';
+import { ConsumeCurrentResponse } from '../models/scanEvent';
+import {
+  createOrGetScanEvent,
+  lockScanEvent,
+  markCommitted,
+  markError,
+  markRejected,
+  markValidated,
+  toCommittedResponse,
+  toRejectedResponse,
+} from './scanEvent.service';
+import { appendScanAuditLog } from './scanAuditLog.service';
 
 
 interface BeerBuRow extends RowDataPacket {
@@ -9,7 +21,8 @@ interface BeerBuRow extends RowDataPacket {
   userId: number;
   drankAt: string;
   score: number;
-  percent_alc: number;
+  alcohol_degree: number;
+  scan_id?: string | null;
 }
 
 interface UserRow {
@@ -19,6 +32,10 @@ interface UserRow {
   gender: 'M'|'F';
 }
 type Point = { ts: string; bac: number };
+type ConsumeCommittedResult = {
+  response: ConsumeCurrentResponse;
+  newlyCommitted: boolean;
+};
 
 const fetchActiveEvents = async (brand: string|null, type: string|null) => {
   const [rows] = await db.execute<RowDataPacket[]>(
@@ -145,6 +162,247 @@ export const recordBeerConsumed = async (event: BeerBu):
     score: finalScore              
   };
 };
+
+async function findBeerTag(conn: PoolConnection, uid: string): Promise<{ id: number; brand: string | null; type: string | null } | null> {
+  const [rows] = await conn.execute<RowDataPacket[]>(
+    `SELECT rfid_tags.id, beers.brand, beers.type
+       FROM rfid_tags
+       JOIN beers ON beers.id = rfid_tags.beer_id
+      WHERE rfid_tags.uid = ?
+      LIMIT 1`,
+    [uid]
+  );
+
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: Number(row.id),
+    brand: typeof row.brand === 'string' ? row.brand : null,
+    type: typeof row.type === 'string' ? row.type : null,
+  };
+}
+
+async function insertBeerConsumption(
+  conn: PoolConnection,
+  event: { scanId: string; rfidTagId: number; userId: number; drankAt: Date; score: number }
+): Promise<number> {
+  const [result] = await conn.execute(
+    `INSERT INTO beer_bu
+      (rfid_tag_id, user_id, drank_at, score, scan_id)
+     VALUES (?, ?, ?, ?, ?)`,
+    [event.rfidTagId, event.userId, event.drankAt, event.score, event.scanId]
+  );
+
+  return Number((result as any).insertId);
+}
+
+async function calculateScore(brand: string | null, type: string | null): Promise<number> {
+  const baseScore = 1;
+  const events = await fetchActiveEvents(brand, type);
+
+  let bonus = 0;
+  let multi = 1;
+  for (const ev of events) {
+    bonus += ev.bonus_pts ?? 0;
+    multi *= ev.multiplier ?? 1;
+  }
+
+  return Math.round((baseScore + bonus) * multi);
+}
+
+export async function rejectScan(
+  params: {
+    scanId: string;
+    uid: string;
+    userId?: number | null;
+    scannedAt?: Date | null;
+    source?: string | null;
+    errorCode: string;
+    errorMessage: string;
+  }
+): Promise<ConsumeCurrentResponse> {
+  await createOrGetScanEvent(params);
+  await markRejected(params.scanId, {
+    userId: params.userId ?? null,
+    errorCode: params.errorCode,
+    errorMessage: params.errorMessage,
+  });
+  const scanEvent = await createOrGetScanEvent(params);
+  await appendScanAuditLog({
+    scanId: params.scanId,
+    uid: params.uid,
+    userId: params.userId ?? null,
+    phase: 'rejected',
+    status: 'rejected',
+    code: params.errorCode,
+    message: params.errorMessage,
+  });
+
+  return toRejectedResponse(scanEvent);
+}
+
+export async function consumeBeerScan(params: {
+  scanId: string;
+  uid: string;
+  userId: number;
+  scannedAt?: Date | null;
+  source?: string | null;
+}): Promise<ConsumeCommittedResult> {
+  await createOrGetScanEvent(params);
+  await appendScanAuditLog({
+    scanId: params.scanId,
+    uid: params.uid,
+    userId: params.userId,
+    phase: 'received',
+    status: 'received',
+    source: params.source ?? null,
+  });
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    await createOrGetScanEvent(params, conn);
+    const locked = await lockScanEvent(params.scanId, conn);
+    if (!locked) {
+      throw new Error('scan_event_not_found');
+    }
+
+    if (locked.status === 'committed') {
+      await conn.rollback();
+      await appendScanAuditLog({
+        scanId: params.scanId,
+        uid: params.uid,
+        userId: locked.userId ?? params.userId,
+        phase: 'duplicate_replayed',
+        status: 'committed',
+        beerBuId: locked.beerBuId ?? null,
+        score: locked.score ?? null,
+      });
+      return {
+        response: toCommittedResponse(locked, true),
+        newlyCommitted: false,
+      };
+    }
+
+    if (locked.status === 'rejected') {
+      await conn.rollback();
+      return {
+        response: toRejectedResponse(locked),
+        newlyCommitted: false,
+      };
+    }
+
+    const tag = await findBeerTag(conn, params.uid);
+    if (!tag) {
+      await markRejected(
+        params.scanId,
+        {
+          userId: params.userId,
+          errorCode: 'unknown_rfid',
+          errorMessage: 'Balise RFID inconnue',
+        },
+        conn
+      );
+      await conn.commit();
+      await appendScanAuditLog({
+        scanId: params.scanId,
+        uid: params.uid,
+        userId: params.userId,
+        phase: 'rejected',
+        status: 'rejected',
+        code: 'unknown_rfid',
+        message: 'Balise RFID inconnue',
+      });
+
+      return {
+        response: {
+          message: 'Balise RFID inconnue',
+          status: 'rejected_final',
+          scanId: params.scanId,
+          code: 'unknown_rfid',
+          userId: params.userId,
+        },
+        newlyCommitted: false,
+      };
+    }
+
+    await markValidated(params.scanId, { userId: params.userId, rfidTagId: tag.id }, conn);
+    const finalScore = await calculateScore(tag.brand, tag.type);
+    const beerBuId = await insertBeerConsumption(conn, {
+      scanId: params.scanId,
+      rfidTagId: tag.id,
+      userId: params.userId,
+      drankAt: params.scannedAt ?? new Date(),
+      score: finalScore,
+    });
+
+    await markCommitted(
+      params.scanId,
+      {
+        userId: params.userId,
+        rfidTagId: tag.id,
+        beerBuId,
+        score: finalScore,
+      },
+      conn
+    );
+    await conn.commit();
+
+    await appendScanAuditLog({
+      scanId: params.scanId,
+      uid: params.uid,
+      userId: params.userId,
+      phase: 'db_committed',
+      status: 'success',
+      beerBuId,
+      score: finalScore,
+    });
+
+    return {
+      response: {
+        message: 'Biere consommee enregistree',
+        status: 'committed',
+        scanId: params.scanId,
+        id: beerBuId,
+        score: finalScore,
+        userId: params.userId,
+      },
+      newlyCommitted: true,
+    };
+  } catch (error: any) {
+    await conn.rollback();
+    await markError(params.scanId, {
+      userId: params.userId,
+      errorCode: 'temporary_failure',
+      errorMessage: error?.message || 'Erreur temporaire',
+    });
+    await appendScanAuditLog({
+      scanId: params.scanId,
+      uid: params.uid,
+      userId: params.userId,
+      phase: 'error',
+      status: 'error',
+      code: 'temporary_failure',
+      message: error?.message || 'Erreur temporaire',
+    });
+
+    return {
+      response: {
+        message: 'Erreur temporaire',
+        status: 'retryable_error',
+        scanId: params.scanId,
+        code: 'temporary_failure',
+        userId: params.userId,
+      },
+      newlyCommitted: false,
+    };
+  } finally {
+    conn.release();
+  }
+}
 
 
 // Exemple pour récupérer toutes les consommations d’un utilisateur sur la dernière heure

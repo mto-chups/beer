@@ -1,6 +1,7 @@
 // controllers/stats.controller.ts
 import { Request, Response } from 'express';
 import { StatsService } from '../services/stats.service';
+import { initScoreStream, removeScoreStreamClient } from '../services/scoreStream.service';
 
 export class StatsController {
   static async getPoints(req: Request, res: Response) {
@@ -59,6 +60,20 @@ export class StatsController {
       console.error(err);
       res.status(500).json({ error: "Impossible de récupérer le classement équipes" });
     }
+  }
+
+  static stream(req: Request, res: Response) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    initScoreStream(res);
+    req.on('close', () => {
+      removeScoreStreamClient(res);
+    });
   }
 
 

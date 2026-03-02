@@ -1,6 +1,8 @@
 // services/stats.service.ts
 import { db } from '../config/db'; // Connexion MySQL
 import { RowDataPacket } from 'mysql2';
+import { randomUUID } from 'crypto';
+import { ScoreStreamPayload, TeamRankingEntry, UserScoreEntry } from '../models/scanEvent';
 
 export class StatsService {
   static async getPointsByEquipeId(
@@ -61,7 +63,7 @@ export class StatsService {
     to?: string,
     brand?: string,
     type?: string
-  ): Promise<RowDataPacket[]> {
+  ): Promise<UserScoreEntry[]> {
     let sql = `
       SELECT
         u.id           AS utilisateurId,
@@ -104,11 +106,11 @@ export class StatsService {
 
     console.log({ sql: sql.trim(), params });
     const [rows] = await db.query<RowDataPacket[]>(sql, params);
-    return rows;
+    return rows as UserScoreEntry[];
   }
 
   // services/stats.service.ts
-  static async getAllTeamScores(): Promise<{ teamId: number; teamName: string; points: number }[]> {
+  static async getAllTeamScores(): Promise<TeamRankingEntry[]> {
     const [rows] = await db.query<RowDataPacket[]>(`
       SELECT 
         t.id AS teamId,
@@ -131,6 +133,47 @@ export class StatsService {
       teamName: r.teamName as string,
       points:   r.points as number
     }));
+  }
+
+  static async getTeamIdForUser(userId: number): Promise<number | null> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT team_id AS teamId
+         FROM users
+        WHERE id = ?
+        LIMIT 1`,
+      [userId]
+    );
+
+    const teamId = rows[0]?.teamId;
+    return typeof teamId === 'number' ? teamId : null;
+  }
+
+  static async getScoreStreamPayload(scanId: string, userId: number): Promise<ScoreStreamPayload> {
+    const ranking = await StatsService.getAllTeamScores();
+    const teamId = await StatsService.getTeamIdForUser(userId);
+    const team = ranking.find((entry) => entry.teamId === teamId) ?? null;
+    const best = ranking[0] ?? null;
+    const userScores = teamId !== null
+      ? await StatsService.getPointsParUtilisateur(teamId)
+      : [];
+    const bestTeamUsers = best
+      ? await StatsService.getPointsParUtilisateur(best.teamId)
+      : [];
+
+    return {
+      eventId: randomUUID(),
+      scanId,
+      committedAt: new Date().toISOString(),
+      ranking,
+      teamId: team?.teamId ?? null,
+      teamName: team?.teamName ?? null,
+      teamPoints: team?.points ?? null,
+      userScores,
+      bestTeamId: best?.teamId ?? null,
+      bestTeamName: best?.teamName ?? null,
+      bestTeamPoints: best?.points ?? null,
+      bestTeamUsers,
+    };
   }
 
 }

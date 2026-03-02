@@ -75,8 +75,8 @@ Flux:
 
 1. Un utilisateur est selectionne sur la borne
 2. Un tag RFID deja associe a une biere est scanne
-3. Le bridge envoie `{ uid }` au backend
-4. Le backend retrouve la biere via le tag et enregistre la consommation
+3. Le bridge envoie `{ scanId, uid, scannedAt, source }` au backend
+4. Le backend traite le scan de facon idempotente, journalise l'evenement et enregistre la consommation
 
 #### Mode association RFID en rafale
 
@@ -136,6 +136,7 @@ Variables utiles dans les scripts:
 
 - Conso pour utilisateur courant: `POST /api/beerbu/consume-current`
 - Conso manuelle: `POST /api/beerbu/consume`
+- Flux SSE scores temps reel: `GET /api/stats/stream`
 - Lire la biere courante pour association RFID: `GET /api/rfid/current-beer`
 - Definir la biere courante pour association RFID: `POST /api/rfid/current-beer`
 - Effacer la biere courante pour association RFID: `DELETE /api/rfid/current-beer`
@@ -153,6 +154,13 @@ Variables utiles dans les scripts:
 - [arduino/](arduino/): code de la carte RFID / servo
 - [serial/](serial/): pont entre le port serie et l'API HTTP
 - [db/](db/): fichiers lies a la base si besoin
+
+## Fiabilite des scans
+
+- Les scans de consommation sont dedoublonnes par `scanId` cote backend.
+- Le backend cree et maintient les tables de fiabilite au demarrage si elles n'existent pas encore.
+- Un journal backup append-only est ecrit dans `backend/logs/scan-events-YYYY-MM-DD.log`.
+- Une migration SQL de reference est fournie dans [backend/migrations/20260302_reliable_scans.sql](backend/migrations/20260302_reliable_scans.sql).
 
 ## Si quelque chose ne marche pas
 

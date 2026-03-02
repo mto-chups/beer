@@ -2,8 +2,12 @@ import { Request, Response } from 'express';
 import { clearCurrentUserId, getCurrentUserId, setCurrentUserId } from '../services/kioskSession.service';
 import { findUserById } from '../services/user.service';
 
-export const getCurrentKioskUser = (_: Request, res: Response) => {
-  res.json({ userId: getCurrentUserId() });
+export const getCurrentKioskUser = async (_: Request, res: Response) => {
+  try {
+    res.json({ userId: await getCurrentUserId() });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || 'Erreur serveur' });
+  }
 };
 
 export const setCurrentKioskUser = async (req: Request, res: Response) => {
@@ -18,14 +22,18 @@ export const setCurrentKioskUser = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Utilisateur introuvable' });
     }
 
-    setCurrentUserId(userId);
+    await setCurrentUserId(userId);
     return res.json({ message: 'Utilisateur courant défini', userId });
   } catch (err: any) {
     return res.status(500).json({ message: err.message || 'Erreur serveur' });
   }
 };
 
-export const clearCurrentKioskUser = (_: Request, res: Response) => {
-  clearCurrentUserId();
-  res.json({ message: 'Utilisateur courant effacé' });
+export const clearCurrentKioskUser = async (_: Request, res: Response) => {
+  try {
+    await clearCurrentUserId();
+    res.json({ message: 'Utilisateur courant effacé' });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || 'Erreur serveur' });
+  }
 };

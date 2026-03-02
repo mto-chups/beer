@@ -261,10 +261,19 @@
       // si tu veux la stopper un jour :
 
       evt.onmessage = (e) => {
-        const { uid, success, message, score } = JSON.parse(e.data);
+        const payload = JSON.parse(e.data);
+        const { success, message, score, eventType } = payload;
+
+        if (eventType === "heartbeat" || typeof success !== "boolean") {
+          return;
+        }
 
         console.log(message, success, score);
-        if (success && message.includes("Bière consommée enregistrée")) {
+        const normalizedMessage = String(message || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        if (success) {
           closePopup();
 
           // Choix aléatoire de 1 à 22
@@ -293,7 +302,9 @@
           }, 10000);
 
           return;
-        } else if (!success && message.includes("Erreur serveur")) {
+        } else if (
+          normalizedMessage.toLowerCase().includes("erreur serveur")
+        ) {
           closePopup();
           flash("flash-echec");
           console.log("Échec : Bière surement déjà enregistrée : " + message);

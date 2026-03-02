@@ -2,6 +2,7 @@
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
 const axios = require('axios');
+const { randomUUID } = require('crypto');
 
 const PORT = process.env.SERIAL_PORT || 'COM5';
 const BAUD = Number(process.env.SERIAL_BAUD || 9600);
@@ -10,6 +11,8 @@ const API_URL =
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 5000);
 const RECONNECT_DELAY_MS = Number(process.env.RECONNECT_DELAY_MS || 2000);
 const DUPLICATE_COOLDOWN_MS = Number(process.env.DUPLICATE_COOLDOWN_MS || 1500);
+const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS || 1000);
+const RETRY_MAX_DELAY_MS = Number(process.env.RETRY_MAX_DELAY_MS || 30000);
 
 const http = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
@@ -21,7 +24,8 @@ let reconnectTimer = null;
 let processing = false;
 let lastUid = null;
 let lastUidAt = 0;
-const pendingUids = [];
+const pendingScans = [];
+let retryTimer = null;
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
@@ -43,8 +47,27 @@ function enqueueUid(uid) {
 
   lastUid = uid;
   lastUidAt = now;
-  pendingUids.push(uid);
+  pendingScans.push({
+    scanId: randomUUID(),
+    uid,
+    scannedAt: new Date(now).toISOString(),
+    attempts: 0,
+    nextRetryAt: now,
+  });
   void processQueue();
+}
+
+function computeRetryDelay(attempts) {
+  return Math.min(RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1), RETRY_MAX_DELAY_MS);
+}
+
+function scheduleQueueWake(delayMs) {
+  if (retryTimer) return;
+
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void processQueue();
+  }, delayMs);
 }
 
 async function processQueue() {
@@ -52,21 +75,46 @@ async function processQueue() {
 
   processing = true;
   try {
-    while (pendingUids.length > 0) {
-      const uid = pendingUids.shift();
-      if (!uid) continue;
+    while (pendingScans.length > 0) {
+      const scan = pendingScans[0];
+      if (!scan) break;
+
+      const waitMs = scan.nextRetryAt - Date.now();
+      if (waitMs > 0) {
+        scheduleQueueWake(waitMs);
+        break;
+      }
 
       try {
-        console.log(`Lecture UID=${uid}, envoi vers ${API_URL}...`);
-        const resp = await http.post(API_URL, { uid });
+        console.log(`Lecture UID=${scan.uid}, scanId=${scan.scanId}, envoi vers ${API_URL}...`);
+        const resp = await http.post(API_URL, {
+          scanId: scan.scanId,
+          uid: scan.uid,
+          scannedAt: scan.scannedAt,
+          source: 'serial-bridge',
+        });
         console.log(`Status ${resp.status}:`, resp.data);
-      } catch (err) {
-        if (err.response) {
-          console.error(`Erreur HTTP ${err.response.status}:`, err.response.data);
+        if (resp.data?.status === 'committed' || resp.data?.status === 'rejected_final') {
+          pendingScans.shift();
           continue;
         }
 
+        scan.attempts += 1;
+        scan.nextRetryAt = Date.now() + computeRetryDelay(scan.attempts);
+        pendingScans.push(pendingScans.shift());
+      } catch (err) {
+        if (err.response) {
+          console.error(`Erreur HTTP ${err.response.status}:`, err.response.data);
+          if (err.response.data?.status === 'rejected_final') {
+            pendingScans.shift();
+            continue;
+          }
+        }
+
         console.error('Erreur requête HTTP:', err.message);
+        scan.attempts += 1;
+        scan.nextRetryAt = Date.now() + computeRetryDelay(scan.attempts);
+        pendingScans.push(pendingScans.shift());
       }
     }
   } finally {

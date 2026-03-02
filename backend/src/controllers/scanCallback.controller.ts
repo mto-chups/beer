@@ -2,6 +2,21 @@ import { Request, Response } from 'express';
 
 // On garde en mémoire tous les clients SSE connectés
 const clients: Response[] = [];
+let heartbeatStarted = false;
+
+function startHeartbeat() {
+  if (heartbeatStarted) {
+    return;
+  }
+
+  heartbeatStarted = true;
+  setInterval(() => {
+    const s = JSON.stringify({ eventType: 'heartbeat', ts: new Date().toISOString() });
+    clients.forEach((client) => {
+      client.write(`data: ${s}\n\n`);
+    });
+  }, 15000).unref();
+}
 
 export function broadcastScanEvent(payload: unknown) {
   const s = JSON.stringify(payload);
@@ -14,6 +29,7 @@ export function broadcastScanEvent(payload: unknown) {
  * Abonne un client à l’EventStream.
  */
 export function initScanCallback(req: Request, res: Response) {
+  startHeartbeat();
   // En-têtes obligatoires SSE
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
