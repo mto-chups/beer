@@ -192,7 +192,7 @@
       // ────────────────────────────────────────
       async function updateDisplay() {
         // 1) Classement global
-        const ranking = await fetchJSON("/stats/equipes/scores");
+        const ranking = await fetchJSON("/api/stats/equipes/scores");
         const best = ranking[0];
         // 2) Nom & points
         document.querySelector(".team-name").textContent = best.teamName;
@@ -232,7 +232,7 @@
 
         // 3) Détails de l’équipe
         const users = await fetchJSON(
-          `/stats/utilisateurs?equipe=${best.teamId}`
+          `/api/stats/utilisateurs?equipe=${best.teamId}`
         );
         const usersDiv = document.querySelector(".user-scores");
         // Remise à zéro (on conserve le <h2>)

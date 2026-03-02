@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Association RFID en rafale</title>
+    <style>
+      :root {
+        --bg: #f3efe5;
+        --card: #fffdf7;
+        --ink: #201a17;
+        --muted: #6f635b;
+        --accent: #c86b2a;
+        --accent-dark: #944411;
+        --ok: #1d7a43;
+        --ok-bg: #ddf5e6;
+        --err: #a92c2c;
+        --err-bg: #f9dddd;
+        --line: #e6d9c6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, #fff4d2 0, transparent 28%),
+          linear-gradient(160deg, #f7f1e3 0%, #eadfca 100%);
+        min-height: 100vh;
+      }
+
+      main {
+        width: min(1100px, calc(100vw - 32px));
+        margin: 32px auto;
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 24px;
+      }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 22px;
+        box-shadow: 0 14px 40px rgba(65, 37, 18, 0.08);
+      }
+
+      h1,
+      h2,
+      p {
+        margin-top: 0;
+      }
+
+      .eyebrow {
+        color: var(--accent-dark);
+        font-size: 0.9rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+
+      .current-beer {
+        margin: 16px 0 22px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: #fbf5ea;
+        border: 1px solid var(--line);
+      }
+
+      .current-beer strong {
+        display: block;
+        font-size: 1.2rem;
+        margin-bottom: 4px;
+      }
+
+      label,
+      select,
+      button {
+        display: block;
+        width: 100%;
+      }
+
+      label {
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+
+      select,
+      button {
+        border-radius: 12px;
+        border: 1px solid #cfbda6;
+        padding: 12px 14px;
+        font-size: 1rem;
+      }
+
+      button {
+        cursor: pointer;
+        background: var(--accent);
+        color: white;
+        border: none;
+        font-weight: bold;
+        transition: transform 0.12s ease, background 0.12s ease;
+      }
+
+      button:hover {
+        background: var(--accent-dark);
+        transform: translateY(-1px);
+      }
+
+      button.secondary {
+        background: #e9dcc7;
+        color: var(--ink);
+      }
+
+      button.secondary:hover {
+        background: #d9c6aa;
+      }
+
+      .actions {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 18px;
+        color: var(--muted);
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #b9a28b;
+      }
+
+      .dot.live {
+        background: var(--ok);
+        box-shadow: 0 0 0 8px rgba(29, 122, 67, 0.12);
+      }
+
+      .log-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .log {
+        margin-top: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .entry {
+        border-radius: 14px;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        background: white;
+        animation: slide-in 0.18s ease;
+      }
+
+      .entry.success {
+        background: var(--ok-bg);
+        border-color: #bedecb;
+      }
+
+      .entry.error {
+        background: var(--err-bg);
+        border-color: #efc1c1;
+      }
+
+      .entry-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-weight: bold;
+      }
+
+      .entry small {
+        color: var(--muted);
+      }
+
+      .empty {
+        color: var(--muted);
+        padding: 18px;
+        text-align: center;
+        border: 1px dashed #ccb59c;
+        border-radius: 14px;
+      }
+
+      @keyframes slide-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 900px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <div class="eyebrow">Mode Rafale</div>
+        <h1>Associer des tags RFID a une biere</h1>
+        <p>
+          Choisis une biere, lance le script serie dedie, puis scanne les tags
+          a la suite. Chaque scan sera associe a la biere courante.
+        </p>
+
+        <form id="beerForm">
+          <label for="beerId">Biere a associer</label>
+          <select id="beerId" name="beerId" required>
+            <option value="">Chargement...</option>
+          </select>
+
+          <div class="actions">
+            <button type="submit">Activer cette biere</button>
+            <button type="button" class="secondary" id="clearBtn">
+              Effacer la selection
+            </button>
+          </div>
+        </form>
+
+        <div class="current-beer" id="currentBeerBox">
+          <strong>Aucune biere active</strong>
+          <span>Les scans seront refuses tant qu aucune biere n est selectionnee.</span>
+        </div>
+
+        <div class="status">
+          <span class="dot" id="sseDot"></span>
+          <span id="sseStatus">Ecoute des evenements en attente...</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="log-header">
+          <div>
+            <div class="eyebrow">Scans</div>
+            <h2>Journal temps reel</h2>
+          </div>
+          <button type="button" class="secondary" id="clearLogBtn">
+            Vider le journal
+          </button>
+        </div>
+        <div id="log" class="log">
+          <div class="empty">Aucun scan recu pour le moment.</div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const beerSelect = document.getElementById("beerId");
+      const beerForm = document.getElementById("beerForm");
+      const currentBeerBox = document.getElementById("currentBeerBox");
+      const log = document.getElementById("log");
+      const sseDot = document.getElementById("sseDot");
+      const sseStatus = document.getElementById("sseStatus");
+
+      function beerLabel(beer) {
+        return `${beer.brand} ${beer.type} ${Number(beer.volume_ml)}ml ${Number(
+          beer.alcohol_degree
+        )}%`;
+      }
+
+      function setCurrentBeerDisplay(beer) {
+        if (!beer) {
+          currentBeerBox.innerHTML = `
+            <strong>Aucune biere active</strong>
+            <span>Les scans seront refuses tant qu aucune biere n est selectionnee.</span>
+          `;
+          beerSelect.value = "";
+          return;
+        }
+
+        currentBeerBox.innerHTML = `
+          <strong>${beerLabel(beer)}</strong>
+          <span>ID ${beer.id} actif pour les prochains scans.</span>
+        `;
+        beerSelect.value = String(beer.id);
+      }
+
+      function addLogEntry(entry) {
+        const empty = log.querySelector(".empty");
+        if (empty) empty.remove();
+
+        const article = document.createElement("article");
+        article.className = `entry ${entry.success ? "success" : "error"}`;
+        article.innerHTML = `
+          <div class="entry-top">
+            <span>${entry.uid || "UID inconnu"}</span>
+            <small>${new Date().toLocaleTimeString("fr-FR")}</small>
+          </div>
+          <div>${entry.message}</div>
+          <small>${entry.beerLabel || "Pas de biere associee"}</small>
+        `;
+        log.prepend(article);
+
+        while (log.children.length > 20) {
+          log.removeChild(log.lastChild);
+        }
+      }
+
+      async function fetchJSON(url, options) {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || response.statusText);
+        }
+        return data;
+      }
+
+      async function loadBeers() {
+        const beers = await fetchJSON("/api/beers");
+        beerSelect.innerHTML = '<option value="">Choisir une biere</option>';
+        beers.forEach((beer) => {
+          const option = document.createElement("option");
+          option.value = beer.id;
+          option.textContent = beerLabel(beer);
+          beerSelect.appendChild(option);
+        });
+      }
+
+      async function loadCurrentBeer() {
+        const data = await fetchJSON("/api/rfid/current-beer");
+        setCurrentBeerDisplay(data.beer);
+      }
+
+      beerForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const beerId = Number(beerSelect.value);
+        if (!beerId) return;
+
+        try {
+          const data = await fetchJSON("/api/rfid/current-beer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ beerId }),
+          });
+          setCurrentBeerDisplay(data.beer);
+          addLogEntry({
+            success: true,
+            uid: "CONFIG",
+            message: "Biere courante mise a jour",
+            beerLabel: beerLabel(data.beer),
+          });
+        } catch (error) {
+          addLogEntry({
+            success: false,
+            uid: "CONFIG",
+            message: error.message,
+            beerLabel: "",
+          });
+        }
+      });
+
+      document.getElementById("clearBtn").addEventListener("click", async () => {
+        try {
+          await fetchJSON("/api/rfid/current-beer", { method: "DELETE" });
+          setCurrentBeerDisplay(null);
+          addLogEntry({
+            success: true,
+            uid: "CONFIG",
+            message: "Selection effacee",
+            beerLabel: "",
+          });
+        } catch (error) {
+          addLogEntry({
+            success: false,
+            uid: "CONFIG",
+            message: error.message,
+            beerLabel: "",
+          });
+        }
+      });
+
+      document
+        .getElementById("clearLogBtn")
+        .addEventListener("click", () => (log.innerHTML = '<div class="empty">Journal vide.</div>'));
+
+      function initEventStream() {
+        const events = new EventSource("/api/scan_callback/events");
+        events.onopen = () => {
+          sseDot.classList.add("live");
+          sseStatus.textContent = "Connexion active avec le serveur.";
+        };
+
+        events.onerror = () => {
+          sseDot.classList.remove("live");
+          sseStatus.textContent = "Connexion SSE interrompue. Reconnexion automatique...";
+        };
+
+        events.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            if (payload.eventType !== "rfid-registration") return;
+            addLogEntry(payload);
+          } catch (error) {
+            console.error("Evenement invalide", error);
+          }
+        };
+      }
+
+      async function init() {
+        await loadBeers();
+        await loadCurrentBeer();
+        initEventStream();
+      }
+
+      init().catch((error) => {
+        addLogEntry({
+          success: false,
+          uid: "INIT",
+          message: error.message,
+          beerLabel: "",
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -9,3 +9,13 @@ export const db = mysql.createPool({
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
 });
+
+export async function testDbConnection(): Promise<void> {
+  const connection = await db.getConnection();
+
+  try {
+    await connection.ping();
+  } finally {
+    connection.release();
+  }
+}

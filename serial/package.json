@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "rfid-batch": "node serial-rfid-to-http.js",
+    "consume": "node serial-to-http.js"
+  },
   "dependencies": {
     "@serialport/parser-readline": "^13.0.0",
     "axios": "^1.10.0",

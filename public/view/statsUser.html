@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Stats Utilisateurs</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 1rem;
+      }
+      form {
+        margin-bottom: 1rem;
+        display: grid;
+        grid-template-columns: repeat(5, max-content) 1fr;
+        gap: 0.5rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.5rem;
+        border: 1px solid #ccc;
+        text-align: left;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Statistiques par utilisateur</h1>
+
+    <form id="filterForm">
+      <label for="equipe">Équipe :</label>
+      <select id="equipe" name="equipe">
+        <!-- options remplies par JS -->
+      </select>
+
+      <label for="from">Du (ISO):</label>
+      <input type="datetime-local" id="from" name="from" />
+
+      <label for="to">Au (ISO):</label>
+      <input type="datetime-local" id="to" name="to" />
+
+      <!-- … juste après le select équipes … -->
+      <label for="brand">Marque :</label>
+      <select id="brand" name="brand">
+        <option value="">Toutes</option>
+      </select>
+
+      <label for="type">Type :</label>
+      <select id="type" name="type">
+        <option value="">Tous</option>
+      </select>
+
+      <button type="submit">Filtrer</button>
+    </form>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Utilisateur ID</th>
+          <th>Prénom</th>
+          <th>Points</th>
+        </tr>
+      </thead>
+      <tbody id="statsBody">
+        <!-- les lignes seront injectées ici -->
+      </tbody>
+    </table>
+
+    <script>
+      async function loadTeams() {
+        try {
+          const res = await fetch("/api/teams/equipes");
+          if (!res.ok) throw new Error(res.statusText);
+          const teams = await res.json();
+          const sel = document.getElementById("equipe");
+          sel.innerHTML = teams
+            .map((t) => {
+              const members = t.members.join(", ");
+              return `<option value="${t.teamId}">
+                  ${t.teamName} (${members})
+                </option>`;
+            })
+            .join("");
+        } catch (err) {
+          console.error("Erreur chargement équipes :", err);
+          alert("Impossible de charger la liste des équipes");
+        }
+      }
+
+      const form = document.getElementById("filterForm");
+      const tbody = document.getElementById("statsBody");
+      async function initFilters() {
+        await Promise.all([loadTeams(), loadBrands(), loadTypes()]);
+        form.dispatchEvent(new Event("submit"));
+      }
+
+      // charge les marques
+      async function loadBrands() {
+        try {
+          const res = await fetch("/api/beers/brands");
+          if (!res.ok) throw new Error(res.statusText);
+          const brands = await res.json();
+          const sel = document.getElementById("brand");
+          sel.innerHTML += brands
+            .map((b) => `<option value="${b}">${b}</option>`)
+            .join("");
+        } catch (err) {
+          console.error("Erreur chargement marques", err);
+        }
+      }
+
+      // charge les types
+      async function loadTypes() {
+        try {
+          const res = await fetch("/api/beers/types");
+          if (!res.ok) throw new Error(res.statusText);
+          const types = await res.json();
+          const sel = document.getElementById("type");
+          sel.innerHTML += types
+            .map((t) => `<option value="${t}">${t}</option>`)
+            .join("");
+        } catch (err) {
+          console.error("Erreur chargement types", err);
+        }
+      }
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        // construit la query-string depuis les inputs
+        const params = new URLSearchParams(new FormData(form));
+        const url = `/api/stats/utilisateurs?${params.toString()}`;
+
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Erreur ${res.status}`);
+          const data = await res.json();
+
+          // vide le tableau avant d’ajouter
+          tbody.innerHTML = "";
+          data.forEach((u) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+            <td>${u.utilisateurId}</td>
+            <td>${u.firstName}</td>
+            <td>${u.points}</td>
+          `;
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          console.error(err);
+          alert("Erreur lors de la récupération des stats");
+        }
+      });
+      initFilters();
+    </script>
+  </body>
+</html>

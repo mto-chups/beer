@@ -9,6 +9,15 @@ export const fetchAllBeers = async (): Promise<Beer[]> => {
   return rows as Beer[];
 };
 
+export const findBeerById = async (id: number): Promise<Beer | null> => {
+  const [rows] = await db.execute(
+    'SELECT id, brand, type, volume_ml, alcohol_degree FROM beers WHERE id = ? LIMIT 1',
+    [id]
+  );
+  const beer = (rows as Beer[])[0];
+  return beer ?? null;
+};
+
 // Ajoute une bière (si pas de doublon)
 export const createBeer = async (beer: Beer): Promise<number> => {
   const roundedDegree = Math.round(Number(beer.alcohol_degree) * 100) / 100;

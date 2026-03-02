@@ -174,7 +174,7 @@
       // met à jour l'affichage
       async function updateDisplay() {
         // 1) classement global
-        const ranking = await fetchJSON("/stats/equipes/scores");
+        const ranking = await fetchJSON("/api/stats/equipes/scores");
         // trouve ton équipe
         const teamInfo = ranking.find((t) => t.teamId === equipeId);
         if (!teamInfo) {
@@ -205,7 +205,7 @@
         document.querySelector(".team-points").textContent = teamInfo.points;
 
         // 3) scores individuels
-        const users = await fetchJSON(`/stats/utilisateurs?equipe=${equipeId}`);
+        const users = await fetchJSON(`/api/stats/utilisateurs?equipe=${equipeId}`);
         const usersDiv = document.querySelector(".user-scores");
         // efface les anciens
         usersDiv.querySelectorAll("div").forEach((d) => {
