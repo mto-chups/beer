@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grand Prix de la Descente</title>
+    <style>
+      :root {
+        --bg-1: #11151c;
+        --bg-2: #1b263b;
+        --track: #2f3e46;
+        --line: rgba(255, 255, 255, 0.12);
+        --card: rgba(10, 12, 18, 0.78);
+        --text: #f4f1de;
+        --muted: #c8d0d8;
+        --gold: #f4b942;
+        --red: #d1495b;
+        --teal: #4fb0c6;
+        --green: #77dd77;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top, rgba(244, 185, 66, 0.2), transparent 30%),
+          linear-gradient(135deg, var(--bg-1), var(--bg-2));
+      }
+
+      .wrap {
+        width: min(1200px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 28px 0 40px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: var(--gold);
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.4rem, 5vw, 5rem);
+        line-height: 0.95;
+      }
+
+      .subhead,
+      .meta {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 22px;
+        padding: 18px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 20px 45px rgba(0, 0, 0, 0.2);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+        gap: 18px;
+      }
+
+      .track {
+        display: grid;
+        gap: 14px;
+      }
+
+      .lane {
+        position: relative;
+        border-radius: 18px;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03), transparent),
+          repeating-linear-gradient(
+            90deg,
+            var(--track) 0 10%,
+            rgba(255, 255, 255, 0.1) 10% 11%
+          );
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        min-height: 88px;
+      }
+
+      .lane::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-left: 5px solid var(--red);
+        border-right: 5px solid var(--gold);
+        pointer-events: none;
+      }
+
+      .car {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        transition: left 0.7s ease;
+        font-size: clamp(2rem, 3vw, 3rem);
+        filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+      }
+
+      .driver {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        padding: 12px 18px;
+      }
+
+      .driver strong {
+        display: block;
+        font-size: 1.2rem;
+      }
+
+      .driver span {
+        color: var(--muted);
+      }
+
+      .stats {
+        text-align: right;
+      }
+
+      .stats b {
+        display: block;
+        font-size: 1.8rem;
+        color: white;
+      }
+
+      .mini-grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .stat-box {
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 16px;
+        padding: 14px;
+      }
+
+      .stat-box h2,
+      .list h2 {
+        margin: 0 0 10px;
+        font-size: 1rem;
+        color: var(--gold);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .headline {
+        font-size: 2rem;
+        font-weight: 800;
+      }
+
+      .list {
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 16px;
+        padding: 14px;
+      }
+
+      .list ol {
+        margin: 0;
+        padding-left: 20px;
+      }
+
+      .list li {
+        margin: 0 0 12px;
+        color: var(--muted);
+      }
+
+      .list strong {
+        color: var(--text);
+      }
+
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .driver {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .stats {
+          text-align: left;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="hero">
+        <p class="eyebrow">Affichage fun en direct</p>
+        <h1>Grand Prix de la Descente</h1>
+        <p class="subhead">
+          Classement sur la derniere heure. Plus tu avances, plus ton moteur tourne a la mousse.
+        </p>
+        <p class="meta" id="meta">Chargement...</p>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="track" id="track"></div>
+        </div>
+
+        <aside class="mini-grid">
+          <div class="panel stat-box">
+            <h2>Pole Position</h2>
+            <div class="headline" id="leaderName">-</div>
+            <div id="leaderMeta" class="subhead"></div>
+          </div>
+
+          <div class="panel list">
+            <h2>Commentaire garage</h2>
+            <ol id="garageNotes"></ol>
+          </div>
+        </aside>
+      </section>
+    </div>
+
+    <script>
+      const CAR_ICONS = ["F1", "GT", "V8", "RS", "XR", "ZX", "TURBO", "R"];
+
+      function formatLiters(value) {
+        return `${Number(value || 0).toFixed(2)} L`;
+      }
+
+      function formatPace(value) {
+        return `${Number(value || 0).toFixed(2)} L/h`;
+      }
+
+      function formatDate(value) {
+        if (!value) return "jamais vu au stand";
+        return new Date(value).toLocaleTimeString("fr-FR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
+
+      function renderGarageNotes(data) {
+        const notes = document.getElementById("garageNotes");
+        const live = data.liveRace || [];
+        if (!live.length) {
+          notes.innerHTML = '<p class="empty">Aucun moteur en chauffe pour le moment.</p>';
+          return;
+        }
+
+        const leader = live[0];
+        const challenger = live[1];
+        const averagePace =
+          live.reduce((sum, entry) => sum + Number(entry.litersPerHour || 0), 0) / live.length;
+
+        const lines = [
+          `${leader.firstName} a le pied lourd avec ${formatPace(leader.litersPerHour)}.`,
+          challenger
+            ? `${challenger.firstName} reste dans l'aspiration a ${formatPace(challenger.litersPerHour)}.`
+            : "Pas de rival direct, la piste est libre.",
+          `Le plateau tourne en moyenne a ${formatPace(averagePace)} sur la derniere heure.`,
+        ];
+
+        notes.innerHTML = lines.map((line) => `<li>${line}</li>`).join("");
+      }
+
+      function renderRace(data) {
+        const track = document.getElementById("track");
+        const meta = document.getElementById("meta");
+        const leaderName = document.getElementById("leaderName");
+        const leaderMeta = document.getElementById("leaderMeta");
+        const live = data.liveRace || [];
+
+        meta.textContent = `Fenetre glissante: ${data.liveWindowMinutes} min. Actualise le ${new Date(data.generatedAt).toLocaleTimeString("fr-FR")}.`;
+
+        if (!live.length) {
+          track.innerHTML = '<p class="empty">Personne n a encore pris le depart sur cette fenetre.</p>';
+          leaderName.textContent = "Stand-by";
+          leaderMeta.textContent = "Pas encore de litre/h recent a afficher.";
+          renderGarageNotes(data);
+          return;
+        }
+
+        const leader = live[0];
+        const maxPace = Math.max(...live.map((entry) => Number(entry.litersPerHour || 0)), 0.01);
+        leaderName.textContent = `${leader.firstName} ${leader.lastName}`;
+        leaderMeta.textContent = `${formatPace(leader.litersPerHour)} • ${formatLiters(leader.liters)} sur la derniere heure`;
+
+        track.innerHTML = live
+          .map((entry, index) => {
+            const left = Math.max(4, Math.min(92, (Number(entry.litersPerHour || 0) / maxPace) * 92));
+            const team = entry.teamName ? `Ecurie ${entry.teamName}` : "Ecurie solo";
+            return `
+              <article class="lane">
+                <div class="car" style="left: calc(${left}% - 34px)">${CAR_ICONS[index % CAR_ICONS.length]}</div>
+                <div class="driver">
+                  <div>
+                    <strong>#${index + 1} ${entry.firstName} ${entry.lastName}</strong>
+                    <span>${team} • dernier ravitaillement ${formatDate(entry.lastDrinkAt)}</span>
+                  </div>
+                  <div class="stats">
+                    <b>${formatPace(entry.litersPerHour)}</b>
+                    <span>${formatLiters(entry.liters)} • ${entry.drinks} conso</span>
+                  </div>
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+
+        renderGarageNotes(data);
+      }
+
+      async function refreshRace() {
+        const response = await fetch("/api/stats/fun");
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        renderRace(data);
+      }
+
+      function connectStream() {
+        const source = new EventSource("/api/stats/stream");
+        source.addEventListener("score-update", () => {
+          refreshRace().catch((error) => console.error("refreshRace", error));
+        });
+        source.onerror = () => {
+          source.close();
+          setTimeout(connectStream, 5000);
+        };
+      }
+
+      refreshRace().catch((error) => {
+        console.error(error);
+        document.getElementById("track").innerHTML =
+          '<p class="empty">Impossible de charger la piste.</p>';
+      });
+      connectStream();
+      setInterval(() => {
+        refreshRace().catch((error) => console.error("refreshRace", error));
+      }, 15000);
+    </script>
+  </body>
+</html>

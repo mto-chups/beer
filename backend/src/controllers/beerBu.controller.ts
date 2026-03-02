@@ -1,7 +1,7 @@
 // src/controllers/beerBu.controller.ts
 import { Request, Response, NextFunction  } from 'express';
 import path from 'path';
-import { computeBacCurve, consumeBeerScan, recordBeerConsumed, rejectScan } from '../services/beerBu.service';
+import { getBacDetails, consumeBeerScan, recordBeerConsumed, rejectScan } from '../services/beerBu.service';
 import { findRfidTagByUid } from '../services/rfidTag.service';
 import { getCurrentUserId, clearCurrentUserId } from '../services/kioskSession.service';
 import { broadcastScanEvent } from './scanCallback.controller';
@@ -165,8 +165,8 @@ export const showBacPage = (req: Request, res: Response, next: NextFunction) => 
 export const getBacData = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = +req.params.userId;
-    const history = await computeBacCurve(userId);
-    res.json({ history });
+    const bac = await getBacDetails(userId);
+    res.json(bac);
   } catch (err) {
     next(err);
   }

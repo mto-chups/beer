@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hall of Foam</title>
+    <style>
+      :root {
+        --bg: #f8f3e8;
+        --ink: #2c1c0f;
+        --muted: #6f5b4b;
+        --amber: #d98f2b;
+        --amber-dark: #8b4f1f;
+        --cream: #fffdf7;
+        --line: rgba(44, 28, 15, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top right, rgba(217, 143, 43, 0.18), transparent 25%),
+          linear-gradient(180deg, #fffaf0, var(--bg));
+      }
+
+      .wrap {
+        width: min(1160px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 30px 0 42px;
+      }
+
+      .hero {
+        margin-bottom: 18px;
+      }
+
+      .kicker {
+        margin: 0 0 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--amber-dark);
+        font-weight: 700;
+        font-size: 0.8rem;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.2rem, 5vw, 4.8rem);
+        line-height: 0.98;
+      }
+
+      .desc,
+      .meta {
+        color: var(--muted);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .card {
+        background: rgba(255, 253, 247, 0.92);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 20px;
+        box-shadow: 0 18px 35px rgba(104, 67, 33, 0.08);
+      }
+
+      .card h2 {
+        margin: 0 0 16px;
+        font-size: 1.1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--amber-dark);
+      }
+
+      .sprint-list,
+      .tank-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .entry {
+        border: 1px dashed rgba(44, 28, 15, 0.15);
+        border-radius: 16px;
+        padding: 14px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.8), rgba(248,243,232,0.9));
+      }
+
+      .entry strong {
+        display: block;
+        font-size: 1.25rem;
+      }
+
+      .badge {
+        display: inline-block;
+        margin-bottom: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(217, 143, 43, 0.15);
+        color: var(--amber-dark);
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
+      .small {
+        margin: 5px 0 0;
+        color: var(--muted);
+      }
+
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      @media (max-width: 860px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="hero">
+        <p class="kicker">Musee douteux de la performance</p>
+        <h1>Hall of Foam</h1>
+        <p class="desc">
+          Deux trophées: les meilleurs sprints sur 30 minutes et les plus gros reservoirs cumules.
+        </p>
+        <p class="meta" id="meta">Chargement...</p>
+      </section>
+
+      <section class="layout">
+        <article class="card">
+          <h2>Meilleurs moments</h2>
+          <div id="sprintList" class="sprint-list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Plus gros reservoirs</h2>
+          <div id="tankList" class="tank-list"></div>
+        </article>
+      </section>
+    </div>
+
+    <script>
+      function formatLiters(value) {
+        return `${Number(value || 0).toFixed(2)} L`;
+      }
+
+      function formatPace(value) {
+        return `${Number(value || 0).toFixed(2)} L/h`;
+      }
+
+      function formatWindow(start, end) {
+        if (!start || !end) return "Fenetre inconnue";
+        const options = { hour: "2-digit", minute: "2-digit" };
+        return `${new Date(start).toLocaleTimeString("fr-FR", options)} -> ${new Date(end).toLocaleTimeString("fr-FR", options)}`;
+      }
+
+      function renderSprints(entries, windowMinutes) {
+        const node = document.getElementById("sprintList");
+        if (!entries.length) {
+          node.innerHTML = '<p class="empty">Aucun sprint memorisable pour le moment.</p>';
+          return;
+        }
+
+        const labels = [
+          "Turbo mousse",
+          "Rafale houblonnee",
+          "Demarrage canon",
+          "Freinage refuse",
+          "Passage en surregime",
+          "Pied colle au plancher",
+          "Mini tempete",
+          "Sprint de comptoir",
+        ];
+
+        node.innerHTML = entries
+          .map(
+            (entry, index) => `
+              <div class="entry">
+                <span class="badge">${labels[index] || "Moment legendaire"}</span>
+                <strong>${entry.firstName} ${entry.lastName}</strong>
+                <p class="small">${entry.teamName ? `Equipe ${entry.teamName}` : "Sans equipe"} • ${formatPace(entry.litersPerHour)}</p>
+                <p class="small">${formatLiters(entry.liters)} bus en ${windowMinutes} min</p>
+                <p class="small">${formatWindow(entry.startAt, entry.endAt)}</p>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderTanks(entries) {
+        const node = document.getElementById("tankList");
+        if (!entries.length) {
+          node.innerHTML = '<p class="empty">Le parking est encore vide.</p>';
+          return;
+        }
+
+        const labels = [
+          "Camion-citerne",
+          "Reservoir XL",
+          "Barrique humaine",
+          "Cuve mobile",
+          "Fut premium",
+          "Bidon d endurance",
+          "Bonbonne tactique",
+          "Jerrican de gala",
+        ];
+
+        node.innerHTML = entries
+          .map(
+            (entry, index) => `
+              <div class="entry">
+                <span class="badge">${labels[index] || "Volume notable"}</span>
+                <strong>${entry.firstName} ${entry.lastName}</strong>
+                <p class="small">${entry.teamName ? `Equipe ${entry.teamName}` : "Sans equipe"} • ${formatLiters(entry.liters)} au total</p>
+                <p class="small">${entry.drinks} consos enregistrees</p>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      async function refreshHall() {
+        const response = await fetch("/api/stats/fun");
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        document.getElementById("meta").textContent =
+          `Derniere mise a jour ${new Date(data.generatedAt).toLocaleTimeString("fr-FR")}.`;
+        renderSprints(data.bestSprints || [], data.sprintWindowMinutes || 30);
+        renderTanks(data.biggestTanks || []);
+      }
+
+      function connectStream() {
+        const source = new EventSource("/api/stats/stream");
+        source.addEventListener("score-update", () => {
+          refreshHall().catch((error) => console.error("refreshHall", error));
+        });
+        source.onerror = () => {
+          source.close();
+          setTimeout(connectStream, 5000);
+        };
+      }
+
+      refreshHall().catch((error) => {
+        console.error(error);
+        document.getElementById("sprintList").innerHTML =
+          '<p class="empty">Impossible de charger les records.</p>';
+        document.getElementById("tankList").innerHTML =
+          '<p class="empty">Impossible de charger les volumes.</p>';
+      });
+      connectStream();
+      setInterval(() => {
+        refreshHall().catch((error) => console.error("refreshHall", error));
+      }, 20000);
+    </script>
+  </body>
+</html>

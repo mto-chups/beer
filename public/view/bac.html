@@ -1,66 +1,508 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <title>Mon BAC</title>
-    <!-- 1) Chart.js v4 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BAC theorique</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-    <!-- 2) Adapter date-fns v3 pour les axes time -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
-    <!-- 3) Plugin Annotation -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.1.1"></script>
+    <style>
+      :root {
+        --bg: linear-gradient(160deg, #f6efe4 0%, #efe7d7 45%, #e7dcc6 100%);
+        --panel: rgba(255, 250, 241, 0.88);
+        --panel-border: rgba(104, 72, 36, 0.12);
+        --ink: #2f2416;
+        --muted: #75634e;
+        --accent: #9f5b1d;
+        --accent-strong: #6f3b12;
+        --ok: #2d6a4f;
+        --warn: #c97a13;
+        --danger: #b02a37;
+        --shadow: 0 18px 45px rgba(67, 45, 18, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background: var(--bg);
+      }
+
+      .page {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 24px auto 40px;
+      }
+
+      .hero,
+      .panel {
+        background: var(--panel);
+        backdrop-filter: blur(10px);
+        border: 1px solid var(--panel-border);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        padding: 28px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .eyebrow {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.76rem;
+        color: var(--muted);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.4rem);
+        line-height: 0.95;
+      }
+
+      .subtitle {
+        margin: 0;
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 1.02rem;
+      }
+
+      .user-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(159, 91, 29, 0.09);
+        color: var(--accent-strong);
+        font-size: 0.92rem;
+      }
+
+      .grid {
+        margin-top: 20px;
+        display: grid;
+        gap: 20px;
+        grid-template-columns: 1.2fr 0.8fr;
+      }
+
+      .panel {
+        padding: 22px;
+      }
+
+      .panel h2 {
+        margin: 0 0 8px;
+        font-size: 1.3rem;
+      }
+
+      .panel p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .stats {
+        margin-top: 18px;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .stat {
+        padding: 16px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.52);
+        border: 1px solid rgba(104, 72, 36, 0.08);
+      }
+
+      .stat-label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+      }
+
+      .stat-value {
+        display: block;
+        font-size: clamp(1.35rem, 2vw, 2rem);
+        font-weight: 700;
+      }
+
+      .status-banner {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        font-size: 0.95rem;
+      }
+
+      .status-ok {
+        background: rgba(45, 106, 79, 0.1);
+        color: var(--ok);
+      }
+
+      .status-warn {
+        background: rgba(201, 122, 19, 0.14);
+        color: var(--warn);
+      }
+
+      .status-danger {
+        background: rgba(176, 42, 55, 0.12);
+        color: var(--danger);
+      }
+
+      .chart-wrap {
+        margin-top: 18px;
+        min-height: 340px;
+      }
+
+      .chart-empty,
+      .empty-state,
+      .error-state {
+        padding: 24px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.45);
+        color: var(--muted);
+        border: 1px dashed rgba(104, 72, 36, 0.18);
+      }
+
+      .history-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 16px;
+      }
+
+      .history-table th,
+      .history-table td {
+        text-align: left;
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(104, 72, 36, 0.12);
+        vertical-align: top;
+      }
+
+      .history-table th {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      .beer-name {
+        font-weight: 700;
+      }
+
+      .beer-meta {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .time-note {
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .stats {
+          grid-template-columns: 1fr;
+        }
+
+        .page {
+          width: min(100vw - 20px, 1180px);
+          margin-top: 10px;
+        }
+
+        .hero,
+        .panel {
+          border-radius: 20px;
+          padding: 18px;
+        }
+
+        .history-table {
+          display: block;
+          overflow-x: auto;
+        }
+      }
+    </style>
   </head>
-  <body data-user-id="2">
-    <h1>Taux d'alcoolémie</h1>
-    <canvas id="bacChart" width="800" height="400"></canvas>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Estimation theorique</p>
+        <h1 id="pageTitle">Chargement du profil utilisateur</h1>
+        <p class="subtitle">
+          Cet ecran estime un taux d'alcoolémie theorique a partir des bieres
+          validees pour cet utilisateur, selon le volume, le degre d'alcool, son
+          poids et son sexe. Ce n'est pas une mesure reelle.
+        </p>
+        <div class="user-line" id="userMeta"></div>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <h2>Courbe theorique sur 24 h</h2>
+          <p>
+            Evolution estimee du taux d'alcoolémie a partir des consommations
+            validees.
+          </p>
+          <div class="chart-wrap" id="chartSection">
+            <canvas id="bacChart" height="140"></canvas>
+          </div>
+        </article>
+
+        <aside class="panel">
+          <h2>Resume</h2>
+          <p>
+            Lecture rapide de l'etat theorique et de l'historique pris en
+            compte.
+          </p>
+          <div class="stats" id="statsGrid"></div>
+          <div id="statusBanner"></div>
+        </aside>
+      </section>
+
+      <section class="panel" style="margin-top: 20px">
+        <h2>Bieres validees</h2>
+        <p>
+          Chaque ligne correspond a une consommation enregistree pour cet
+          utilisateur.
+        </p>
+        <div id="historySection"></div>
+      </section>
+    </main>
+
     <script>
-      (async () => {
-        // 1) Defaults pour éviter hitRadius non défini
+      const pageTitle = document.getElementById("pageTitle");
+      const userMeta = document.getElementById("userMeta");
+      const statsGrid = document.getElementById("statsGrid");
+      const statusBanner = document.getElementById("statusBanner");
+      const historySection = document.getElementById("historySection");
+      const chartSection = document.getElementById("chartSection");
+      const chartCanvas = document.getElementById("bacChart");
+
+      function getUserIdFromUrl() {
+        const parts = window.location.pathname.split("/").filter(Boolean);
+        const maybeId = Number(parts[parts.length - 1]);
+        if (Number.isInteger(maybeId) && maybeId > 0) {
+          return maybeId;
+        }
+
+        const searchId = Number(
+          new URLSearchParams(window.location.search).get("userId"),
+        );
+        if (Number.isInteger(searchId) && searchId > 0) {
+          return searchId;
+        }
+
+        return null;
+      }
+
+      function formatBac(value) {
+        return `${Number(value || 0).toFixed(3)} g/L`;
+      }
+
+      function formatDateTime(value) {
+        return new Date(value).toLocaleString("fr-FR", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      function getStatus(summary) {
+        if (summary.currentBac >= 0.5) {
+          return {
+            className: "status-danger",
+            text: "Niveau theorique eleve. Ne pas interpreter cet ecran comme une autorisation a conduire.",
+          };
+        }
+
+        if (summary.currentBac > 0) {
+          return {
+            className: "status-warn",
+            text: "Alcoolémie theorique encore positive. La courbe continue d'integrer l'elimination dans le temps.",
+          };
+        }
+
+        return {
+          className: "status-ok",
+          text: "Aucune alcoolémie theorique positive sur la fenetre calculee ou aucune biere validee.",
+        };
+      }
+
+      function renderUser(user) {
+        pageTitle.textContent = `${user.firstname} ${user.lastname}`;
+        userMeta.innerHTML = `
+          <span class="pill">Utilisateur #${user.id}</span>
+          <span class="pill">${user.weight} kg</span>
+          <span class="pill">${user.age} ans</span>
+          <span class="pill">Sexe ${user.gender}</span>
+        `;
+      }
+
+      function renderStats(summary) {
+        statsGrid.innerHTML = `
+          <div class="stat">
+            <span class="stat-label">BAC theorique actuel</span>
+            <span class="stat-value">${formatBac(summary.currentBac)}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Pic theorique sur la fenetre</span>
+            <span class="stat-value">${formatBac(summary.peakBac)}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Bieres validees</span>
+            <span class="stat-value">${summary.totalDrinks}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Alcool pur estime</span>
+            <span class="stat-value">${summary.totalAlcoholGrams.toFixed(2)} g</span>
+          </div>
+        `;
+
+        const status = getStatus(summary);
+        statusBanner.className = `status-banner ${status.className}`;
+        statusBanner.textContent = status.text;
+      }
+
+      function renderHistory(drinks) {
+        if (!drinks.length) {
+          historySection.innerHTML = `
+            <div class="empty-state">
+              Aucune biere validee pour cet utilisateur. La courbe restera vide tant qu'aucune consommation n'est enregistree.
+            </div>
+          `;
+          return;
+        }
+
+        historySection.innerHTML = `
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Validation</th>
+                <th>Biere</th>
+                <th>Volume / degre</th>
+                <th>Alcool pur</th>
+                <th>Impact theorique</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${drinks
+                .map(
+                  (drink) => `
+                    <tr>
+                      <td>
+                        <div>${formatDateTime(drink.drankAt)}</div>
+                        <div class="time-note">Score ${drink.score}</div>
+                      </td>
+                      <td>
+                        <div class="beer-name">${drink.brand}</div>
+                        <div class="beer-meta">${drink.type}</div>
+                      </td>
+                      <td>${drink.volumeMl.toFixed(0)} mL • ${drink.alcoholDegree.toFixed(2)}%</td>
+                      <td>${drink.alcoholGrams.toFixed(2)} g</td>
+                      <td>
+                        <div>Pic: ${formatBac(drink.theoreticalPeakBac)}</div>
+                        <div class="time-note">Contribution actuelle: ${formatBac(drink.currentBacContribution)}</div>
+                      </td>
+                    </tr>
+                  `,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        `;
+      }
+
+      function renderChart(history) {
+        if (!history.length) {
+          chartSection.innerHTML = `
+            <div class="chart-empty">
+              Aucune valeur de BAC strictement superieure a 0 g/L sur les 24 dernieres heures.
+            </div>
+          `;
+          return;
+        }
+
         Chart.defaults.elements.point = {
-          radius: 3,
-          hoverRadius: 5,
-          hitRadius: 5,
+          radius: 0,
+          hoverRadius: 4,
+          hitRadius: 8,
         };
 
-        // 2) Récupérer l’ID et les données
-        const userId = document.body.dataset.userId;
-        const resp = await fetch(`/api/beerbu/bac/data/${userId}`);
-        const { history } = await resp.json();
-
-        // 3) Préparer labels + data + timestamp "maintenant"
-        const labels = history.map((p) => p.ts);
-        const data = history.map((p) => p.bac);
-        const nowIso = new Date().toISOString();
-
-        // 4) Créer le chart (le plugin d’annotation est déjà actif)
-        new Chart(document.getElementById("bacChart"), {
+        new Chart(chartCanvas, {
           type: "line",
           data: {
-            labels,
+            labels: history.map((point) => point.ts),
             datasets: [
               {
-                label: "Taux d'alcoolémie (dernières 24 h)",
-                data,
-                borderColor: "blue",
-                fill: false,
+                label: "BAC theorique",
+                data: history.map((point) => point.bac),
+                borderColor: "#9f5b1d",
+                backgroundColor: "rgba(159, 91, 29, 0.18)",
+                fill: true,
+                tension: 0.25,
+                borderWidth: 3,
               },
             ],
           },
           options: {
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
+              legend: {
+                display: false,
+              },
               annotation: {
                 annotations: {
                   nowLine: {
                     type: "line",
-                    xMin: nowIso,
-                    xMax: nowIso,
-                    borderColor: "green",
+                    xMin: new Date().toISOString(),
+                    xMax: new Date().toISOString(),
+                    borderColor: "#2d6a4f",
                     borderWidth: 2,
+                    borderDash: [6, 6],
                     label: {
                       enabled: true,
-                      position: "top",
                       content: "Maintenant",
+                      position: "start",
                     },
+                  },
+                  legalLimit: {
+                    type: "line",
+                    yMin: 0.5,
+                    yMax: 0.5,
+                    borderColor: "#b02a37",
+                    borderWidth: 2,
+                    borderDash: [4, 4],
+                    label: {
+                      enabled: true,
+                      content: "0.5 g/L",
+                      position: "end",
+                    },
+                  },
+                },
+              },
+              tooltip: {
+                callbacks: {
+                  label(context) {
+                    return ` ${formatBac(context.parsed.y)}`;
                   },
                 },
               },
@@ -68,16 +510,63 @@
             scales: {
               x: {
                 type: "time",
-                time: { unit: "hour", tooltipFormat: "HH:mm" },
-                title: { display: true, text: "Heure" },
+                time: {
+                  unit: "hour",
+                  tooltipFormat: "dd/MM HH:mm",
+                  displayFormats: {
+                    hour: "HH:mm",
+                  },
+                },
+                title: {
+                  display: true,
+                  text: "Heure",
+                },
               },
               y: {
-                title: { display: true, text: "g/L" },
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "g/L",
+                },
               },
             },
           },
         });
-      })();
+      }
+
+      async function init() {
+        const userId = getUserIdFromUrl();
+        if (!userId) {
+          pageTitle.textContent = "Utilisateur introuvable";
+          chartSection.innerHTML = `<div class="error-state">L'URL doit contenir un identifiant utilisateur valide, par exemple <code>/api/beerbu/bac/12</code>.</div>`;
+          historySection.innerHTML = "";
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/beerbu/bac/data/${userId}`);
+          if (!response.ok) {
+            throw new Error(`Erreur API ${response.status}`);
+          }
+
+          const data = await response.json();
+          renderUser(data.user);
+          renderStats(data.summary);
+          renderChart(data.history || []);
+          renderHistory(data.drinks || []);
+        } catch (error) {
+          pageTitle.textContent = "Impossible de charger l'ecran BAC";
+          userMeta.innerHTML = "";
+          statsGrid.innerHTML = "";
+          statusBanner.className = "status-banner status-danger";
+          statusBanner.textContent =
+            "Le backend n'a pas pu fournir les donnees BAC pour cet utilisateur.";
+          chartSection.innerHTML = `<div class="error-state">${error.message || "Erreur inconnue"}</div>`;
+          historySection.innerHTML = "";
+        }
+      }
+
+      init();
     </script>
   </body>
 </html>

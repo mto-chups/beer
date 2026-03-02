@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Course du meilleur poulain</title>
+    <style>
+      :root {
+        --pmu-green: #0b6c2b;
+        --pmu-green-dark: #084d1f;
+        --pmu-red: #d31f36;
+        --pmu-cream: #f5f1e6;
+        --ink: #1b1a16;
+        --muted: #d8e6d8;
+        --line: rgba(255, 255, 255, 0.1);
+        --panel: rgba(7, 27, 12, 0.64);
+        --track: #74553c;
+        --track-line: rgba(255, 255, 255, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: "Trebuchet MS", sans-serif;
+        color: var(--pmu-cream);
+        background:
+          radial-gradient(
+            circle at top right,
+            rgba(255, 255, 255, 0.08),
+            transparent 18%
+          ),
+          linear-gradient(180deg, #041409, var(--pmu-green-dark) 42%, #062013);
+      }
+
+      .stage {
+        width: min(calc(100vw - 24px), calc((100vh - 24px) * 16 / 9));
+        aspect-ratio: 16 / 9;
+        padding: 16px;
+      }
+
+      .page {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        gap: 14px;
+        grid-template-rows: auto auto 1fr;
+      }
+
+      .hero,
+      .card,
+      .track-card,
+      .ticker {
+        border-radius: 26px;
+        border: 1px solid var(--line);
+        box-shadow: 0 18px 30px rgba(0, 0, 0, 0.22);
+      }
+
+      .hero {
+        position: relative;
+        overflow: hidden;
+        padding: 18px 22px;
+        background:
+          linear-gradient(
+            90deg,
+            rgba(211, 31, 54, 0.96) 0 11px,
+            transparent 11px
+          ),
+          linear-gradient(180deg, #0d7c31, var(--pmu-green));
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: -40px -10px auto auto;
+        width: 240px;
+        height: 240px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(255, 255, 255, 0.08),
+          transparent 65%
+        );
+        pointer-events: none;
+      }
+
+      .brand-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+        font-weight: 800;
+        letter-spacing: 0.04em;
+      }
+
+      .brand-logo {
+        display: inline-flex;
+        align-items: Left;
+        justify-content: center;
+        width: 168px;
+        height: 64px;
+        /* padding: 6px 10px; */
+        border-radius: 2px;
+        /* background: rgba(255, 255, 255, 0.96); */
+        /* box-shadow: inset 0 0 0 1px rgba(8, 77, 31, 0.12); */
+      }
+
+      .brand-logo img {
+        display: block;
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      }
+
+      .logo-pill {
+        display: inline-grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: white;
+        color: var(--pmu-green);
+        font-weight: 900;
+      }
+
+      .hero-copy h1 {
+        margin: 10px 0 6px;
+        font-size: clamp(2rem, 3.2vw, 3.8rem);
+        line-height: 0.9;
+        text-transform: uppercase;
+      }
+
+      .hero-copy p,
+      .muted {
+        margin: 0;
+        color: rgba(245, 241, 230, 0.86);
+      }
+
+      .hero-meta {
+        text-align: right;
+        font-size: 0.92rem;
+        line-height: 1.45;
+      }
+
+      .topbar {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .card {
+        padding: 14px 16px;
+        background: var(--panel);
+      }
+
+      .card strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.76);
+      }
+
+      .main-grid {
+        min-height: 0;
+        display: grid;
+        gap: 14px;
+        grid-template-columns: 1.2fr 0.8fr;
+      }
+
+      .tracks {
+        min-height: 0;
+        display: grid;
+        gap: 12px;
+      }
+
+      .track-card {
+        padding: 14px 16px;
+        background: rgba(25, 13, 6, 0.36);
+      }
+
+      .track-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+
+      .track-head strong {
+        font-size: 1.15rem;
+      }
+
+      .track-head span {
+        color: rgba(245, 241, 230, 0.72);
+      }
+
+      .lane {
+        position: relative;
+        height: 84px;
+        border-radius: 18px;
+        overflow: hidden;
+        background:
+          repeating-linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.08) 0 10%,
+            rgba(255, 255, 255, 0.02) 10% 11%
+          ),
+          linear-gradient(180deg, #7c5d44, var(--track));
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .lane::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 6px;
+        background: white;
+      }
+
+      .lane::after {
+        content: "";
+        position: absolute;
+        inset: 0 0 0 auto;
+        width: 6px;
+        background: var(--pmu-red);
+      }
+
+      .runner {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        transition: left 0.7s ease;
+        font-size: 2.2rem;
+        filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.3));
+      }
+
+      .label {
+        position: absolute;
+        left: 14px;
+        top: 12px;
+        z-index: 1;
+        display: grid;
+        gap: 2px;
+      }
+
+      .label .number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: white;
+        color: var(--ink);
+        font-weight: 900;
+      }
+
+      .label .name {
+        font-size: 1rem;
+        font-weight: 700;
+      }
+
+      .label .sub {
+        color: rgba(245, 241, 230, 0.76);
+        font-size: 0.88rem;
+      }
+
+      .track-note {
+        margin-top: 8px;
+        color: rgba(245, 241, 230, 0.84);
+        font-size: 0.94rem;
+      }
+
+      .side-sheet {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        gap: 12px;
+      }
+
+      .ticker {
+        padding: 14px 16px;
+        background: linear-gradient(
+          90deg,
+          rgba(211, 31, 54, 0.18),
+          rgba(255, 255, 255, 0.06)
+        );
+        font-size: 1rem;
+        font-weight: 700;
+      }
+
+      .table-card {
+        padding: 14px 16px;
+        background: var(--panel);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 10px 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        text-align: left;
+      }
+
+      th {
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255, 255, 255, 0.68);
+      }
+
+      td {
+        font-size: 0.92rem;
+      }
+
+      .footer-line {
+        color: rgba(245, 241, 230, 0.72);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <main class="page">
+        <section class="hero">
+          <div class="brand-row">
+            <div class="brand">
+              <div class="brand-logo">
+                <img
+                  src="/assets/pmu-logo.svg"
+                  alt="PMU"
+                  onerror="
+                    this.onerror = null;
+                    this.src = '/assets/pmu-logo.png';
+                  "
+                />
+              </div>
+              Direct hippique
+            </div>
+            <div class="hero-meta">
+              Hippodrome central<br />
+              Releve des favoris mousse
+            </div>
+          </div>
+          <div class="hero-copy">
+            <h1>Course du meilleur poulain</h1>
+            <p>
+              Edition PMU en direct. Les chevaux avancent selon leur cadence
+              liquide sur la derniere heure.
+            </p>
+          </div>
+          <p id="meta" class="muted"></p>
+        </section>
+
+        <section id="topbar" class="topbar"></section>
+
+        <section class="main-grid">
+          <section id="tracks" class="tracks"></section>
+
+          <aside class="side-sheet">
+            <div id="speakerTicker" class="ticker">
+              Le speaker chauffe le micro.
+            </div>
+            <div class="table-card">
+              <strong>Tableau des cotes</strong>
+              <table>
+                <thead>
+                  <tr>
+                    <th>N°</th>
+                    <th>Cheval</th>
+                    <th>Rythme</th>
+                  </tr>
+                </thead>
+                <tbody id="oddsBoard"></tbody>
+              </table>
+            </div>
+            <div class="table-card">
+              <strong>Observations PMU</strong>
+              <div
+                id="observationBoard"
+                class="tracks"
+                style="gap: 10px; margin-top: 10px"
+              ></div>
+            </div>
+            <div id="footerLine" class="footer-line"></div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script src="/funShared.js"></script>
+    <script>
+      const { fetchJSON, formatPace, startAutoRefresh, setMeta } =
+        window.FunShared;
+      const SPEAKER_TEMPLATES = [
+        "Le favori ${name} est annonce plein gaz a ${pace}.",
+        "Attention a ${name}, le PMU le voit filer a ${pace} sans broncher.",
+        "${name} prend les commandes et impose un tempo de ${pace}.",
+        "Le micro du speaker s'enflamme, ${name} imprime un train de ${pace}.",
+        "${name} garde la corde et mene la danse a ${pace}.",
+        "Le peloton regarde ${name}, tres proprement cale a ${pace}.",
+        "${name} est en tete au passage du comptoir principal avec ${pace}.",
+        "Les pronostiqueurs s'agitent, ${name} tient le haut du ticket a ${pace}.",
+      ];
+      const FAVORITE_TEMPLATES = [
+        "${name} reste le favori logique du guichet.",
+        "${name} concentre les mises de comptoir du moment.",
+        "${name} fait tourner les tickets et les regards.",
+        "${name} a clairement la cote chez les habitués.",
+        "${name} ouvre la feuille des favoris sans discussion.",
+      ];
+      const TERRAIN_TEMPLATES = [
+        "Terrain souple, mousse bien repartie.",
+        "Piste collante mais favorable aux gros moteurs.",
+        "Releve PMU: couloir central tres roulant.",
+        "Conditions de comptoir stables, bon rendement attendu.",
+        "Terrain legerement gras, ideale pour finisseurs houblonnes.",
+      ];
+      const PELOTON_TEMPLATES = [
+        "${count} chevaux dans la course, ambiance de guichet soutenue.",
+        "${count} partants annonces, le peloton reste compact.",
+        "${count} profils au depart, les tickets commencent a chauffer.",
+        "${count} chevaux en piste, personne ne veut rendre son dossard.",
+      ];
+      const TRACK_NOTE_TEMPLATES = [
+        "${name} ${commentary}. Le coup de rein est signale a ${pace}.",
+        "${name} garde son action reguliere, note PMU: ${commentary}.",
+        "Observation de piste pour ${name}: ${commentary}, progression constante a ${pace}.",
+        "${name} passe au niveau du speaker, ${commentary}.",
+        "Le cheval ${name} reste propre dans son couloir, ${commentary}.",
+      ];
+      const OBSERVATION_TEMPLATES = [
+        "${name} est bien place au betting office avec ${pace}.",
+        "Les habitués murmurent que ${name} peut encore accelerer.",
+        "${name} reste surveille par les gros preneurs de tickets.",
+        "Le comptoir donne un leger avantage tactique a ${name}.",
+        "${name} semble avoir du rab pour finir fort dans la ligne droite.",
+        "Le guichet note une belle regularite chez ${name}.",
+        "${name} garde un profil de cheval de confiance pour la fin de course.",
+      ];
+
+      function pickTemplate(list, seed) {
+        return list[Math.abs(seed) % list.length];
+      }
+
+      function fill(template, values) {
+        return template
+          .replaceAll("${name}", values.name || "")
+          .replaceAll("${pace}", values.pace || "")
+          .replaceAll("${count}", String(values.count || ""))
+          .replaceAll("${commentary}", values.commentary || "");
+      }
+
+      function render(payload) {
+        const rows = payload.horseRace || [];
+        const leader = rows[0] || null;
+        const seed = Math.round(
+          (leader?.litersPerHour || 0) * 1000 + rows.length * 19,
+        );
+
+        document.getElementById("topbar").innerHTML = rows.length
+          ? `
+            <div class="card">
+              <strong>Favori du guichet</strong>
+              <div>${leader.firstName} ${leader.lastName}</div>
+              <small>${pickTemplate(FAVORITE_TEMPLATES, seed).replace("${name}", `${leader.firstName} ${leader.lastName}`)}</small>
+            </div>
+            <div class="card">
+              <strong>Commentaire speaker</strong>
+              <div>${fill(pickTemplate(SPEAKER_TEMPLATES, seed + 3), {
+                name: `${leader.firstName} ${leader.lastName}`,
+                pace: formatPace(leader.litersPerHour),
+              })}</div>
+            </div>
+            <div class="card">
+              <strong>Etat du terrain</strong>
+              <div>${pickTemplate(TERRAIN_TEMPLATES, seed + 5)}</div>
+            </div>
+            <div class="card">
+              <strong>Peloton</strong>
+              <div>${fill(pickTemplate(PELOTON_TEMPLATES, seed + 7), { count: rows.length })}</div>
+            </div>
+          `
+          : `<div class="card">Aucune course lancee.</div>`;
+
+        document.getElementById("tracks").innerHTML = rows.length
+          ? rows
+              .map(
+                (entry, index) => `
+                <article class="track-card">
+                  <div class="track-head">
+                    <strong>${entry.firstName} ${entry.lastName}</strong>
+                    <span>${entry.mount} • ${formatPace(entry.litersPerHour)}</span>
+                  </div>
+                  <div class="lane">
+                    <div class="runner" style="left:calc(${entry.progressPct}% - 30px)">🐎</div>
+                    <div class="label">
+                      <div class="number">${index + 1}</div>
+                      <div class="name">${entry.firstName} ${entry.lastName}</div>
+                      <div class="sub">${entry.mount} • progression ${entry.progressPct.toFixed(1)}%</div>
+                    </div>
+                  </div>
+                  <div class="track-note">${fill(
+                    pickTemplate(TRACK_NOTE_TEMPLATES, seed + index * 11),
+                    {
+                      name: `${entry.firstName} ${entry.lastName}`,
+                      pace: formatPace(entry.litersPerHour),
+                      commentary: entry.commentary,
+                    },
+                  )}</div>
+                </article>
+              `,
+              )
+              .join("")
+          : `<article class="track-card">Aucun cheval n'a quitte les stalles.</article>`;
+
+        document.getElementById("speakerTicker").textContent = leader
+          ? fill(pickTemplate(SPEAKER_TEMPLATES, seed + 13), {
+              name: `${leader.firstName} ${leader.lastName}`,
+              pace: formatPace(leader.litersPerHour),
+            })
+          : "Le speaker chauffe le micro.";
+
+        document.getElementById("oddsBoard").innerHTML = rows.length
+          ? rows
+              .map(
+                (entry, index) => `
+                  <tr>
+                    <td>${index + 1}</td>
+                    <td>${entry.firstName}</td>
+                    <td>${formatPace(entry.litersPerHour)}</td>
+                  </tr>
+                `,
+              )
+              .join("")
+          : `<tr><td colspan="3">Aucun partant.</td></tr>`;
+
+        document.getElementById("observationBoard").innerHTML = rows.length
+          ? rows
+              .slice(0, 3)
+              .map(
+                (entry, index) => `
+                  <div class="card" style="padding:12px 14px;">
+                    <strong>Observation ${index + 1}</strong>
+                    <div>${fill(
+                      pickTemplate(OBSERVATION_TEMPLATES, seed + index * 17),
+                      {
+                        name: `${entry.firstName} ${entry.lastName}`,
+                        pace: formatPace(entry.litersPerHour),
+                      },
+                    )}</div>
+                  </div>
+                `,
+              )
+              .join("")
+          : `<div class="card" style="padding:12px 14px;">Le guichet attend son premier ticket.</div>`;
+
+        document.getElementById("footerLine").textContent = rows.length
+          ? `Edition PMU mise a jour. ${rows.length} chevaux en course, favoris recalcules a ${new Date(payload.generatedAt).toLocaleTimeString("fr-FR")}.`
+          : "Edition PMU en veille, aucun cheval au depart.";
+
+        setMeta(
+          "meta",
+          `Releve hippique mis a jour a ${new Date(payload.generatedAt).toLocaleTimeString("fr-FR")}.`,
+        );
+      }
+
+      async function refresh() {
+        render(await fetchJSON("/api/stats/fun/live"));
+      }
+
+      startAutoRefresh("horseRace", refresh, {
+        intervalMs: 20000,
+        minIntervalMs: 10000,
+        useStream: true,
+      });
+    </script>
+  </body>
+</html>

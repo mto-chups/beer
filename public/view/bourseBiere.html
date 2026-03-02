@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bourse de la Biere</title>
+    <style>
+      :root { --bg:#07131f; --panel:#0c2234; --ink:#e8f1f7; --muted:#91a8b8; --line:rgba(255,255,255,.08); --up:#4cd964; --down:#ff6b6b; }
+      body { margin:0; color:var(--ink); font-family:Georgia,serif; background:linear-gradient(160deg,#03101a,#0b1f2f); }
+      .page { width:min(1180px, calc(100% - 30px)); margin:24px auto 40px; display:grid; gap:18px; }
+      .hero,.panel { background:rgba(12,34,52,.92); border:1px solid var(--line); border-radius:22px; padding:22px; }
+      .ticker { overflow:hidden; white-space:nowrap; color:#ffd166; font-weight:700; }
+      .ticker span { display:inline-block; padding-right:40px; animation:marquee 16s linear infinite; }
+      @keyframes marquee { from { transform:translateX(0); } to { transform:translateX(-50%); } }
+      .summary { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+      .tile { padding:16px; border-radius:18px; background:rgba(255,255,255,.04); border:1px solid var(--line); }
+      table { width:100%; border-collapse:collapse; }
+      th,td { padding:12px 10px; border-bottom:1px solid var(--line); text-align:left; }
+      .up { color:var(--up); } .down { color:var(--down); }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="ticker"><span id="ticker">Breaking mousse news en chargement...</span></div>
+        <h1>Bourse de la biere</h1>
+        <p id="meta" style="color:var(--muted)"></p>
+      </section>
+      <section class="summary" id="summary"></section>
+      <section class="panel">
+        <table>
+          <thead><tr><th>Titre</th><th>Indice</th><th>Variation</th><th>Volatilite</th><th>Signal</th></tr></thead>
+          <tbody id="board"></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/funShared.js"></script>
+    <script>
+      const { fetchJSON, formatPercent, formatPace, startAutoRefresh, setMeta } = window.FunShared;
+      function render(payload) {
+        const rows = payload.marketBoard || [];
+        const leader = rows[0];
+        const biggestDrop = [...rows].sort((a, b) => a.variationPct - b.variationPct)[0];
+        document.getElementById("summary").innerHTML = rows.length ? `
+          <div class="tile"><strong>Valeur star</strong><div>${leader.firstName} ${leader.lastName}</div><small>${leader.label} • ${leader.currentIndex.toFixed(1)}</small></div>
+          <div class="tile"><strong>Plus forte secousse</strong><div>${biggestDrop.firstName} ${biggestDrop.lastName}</div><small>${formatPercent(biggestDrop.variationPct)}</small></div>
+          <div class="tile"><strong>Signal salle</strong><div>${rows.filter((entry) => entry.variationPct > 0).length} titres au vert</div><small>${rows.length} valeurs cotees</small></div>
+        ` : `<div class="tile">Aucune seance active.</div>`;
+        document.getElementById("board").innerHTML = rows.length ? rows.map((entry) => `
+          <tr>
+            <td><strong>${entry.firstName} ${entry.lastName}</strong><br /><small>${entry.teamName || "Sans ecurie"}</small></td>
+            <td>${Number(entry.currentIndex).toFixed(1)}</td>
+            <td class="${entry.variationPct >= 0 ? "up" : "down"}">${formatPercent(entry.variationPct)}<br /><small>${formatPace(entry.litersPerHour)}</small></td>
+            <td>${Number(entry.volatility).toFixed(2)} L<br /><small>${entry.currentLiters.toFixed(2)} L vs ${entry.previousLiters.toFixed(2)} L</small></td>
+            <td>${entry.label}</td>
+          </tr>
+        `).join("") : `<tr><td colspan="5">Aucun titre cote pour le moment.</td></tr>`;
+        const headline = rows[0] ? `${rows[0].firstName} ouvre la seance en tete, ${rows[0].label}.` : "Le marche reste suspendu faute de mousse.";
+        document.getElementById("ticker").textContent = `${headline} Fenetre de cotation: ${payload.windows.marketMinutes} min.`;
+        setMeta("meta", `Derniere cloche ${new Date(payload.generatedAt).toLocaleTimeString("fr-FR")}.`);
+      }
+      async function refresh() { render(await fetchJSON("/api/stats/fun/live")); }
+      startAutoRefresh("bourseBiere", refresh, {
+        intervalMs: 30000,
+        minIntervalMs: 15000,
+        useStream: false,
+      });
+    </script>
+  </body>
+</html>

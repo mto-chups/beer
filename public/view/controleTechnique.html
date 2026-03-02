@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Controle Technique Alcoolemie</title>
+    <style>
+      :root { --bg:#101820; --panel:#18242d; --ink:#edf2f4; --muted:#9fb0b8; --ok:#74c69d; --warn:#f4a261; --danger:#e63946; --line:rgba(255,255,255,.08); }
+      * { box-sizing:border-box; }
+      body { margin:0; color:var(--ink); font-family:"Trebuchet MS",sans-serif; background:radial-gradient(circle at top, rgba(255,255,255,.07), transparent 25%), linear-gradient(180deg, #0d1418, var(--bg)); }
+      .page { width:min(1180px, calc(100% - 28px)); margin:24px auto 40px; display:grid; gap:18px; }
+      .hero,.panel { background:rgba(24,36,45,.92); border:1px solid var(--line); border-radius:24px; padding:22px; box-shadow:0 20px 40px rgba(0,0,0,.25); }
+      .hero h1 { margin:8px 0 6px; font-size:clamp(2.2rem,4vw,4.5rem); }
+      .muted { color:var(--muted); }
+      .grid { display:grid; gap:18px; grid-template-columns:1.1fr .9fr; }
+      .stack { display:grid; gap:18px; }
+      .gauge-wrap { display:grid; place-items:center; min-height:360px; }
+      .gauge { width:min(420px, 80vw); aspect-ratio:1; border-radius:50%; background:conic-gradient(var(--ok) 0deg, var(--ok) var(--angle), rgba(255,255,255,.09) var(--angle) 360deg); position:relative; }
+      .gauge::after { content:""; position:absolute; inset:38px; border-radius:50%; background:#111b22; border:1px solid var(--line); }
+      .center { position:absolute; inset:0; display:grid; place-items:center; text-align:center; z-index:2; }
+      .center strong { font-size:3rem; }
+      .lights,.specs { display:grid; gap:12px; }
+      .light,.spec { padding:14px; border-radius:16px; background:rgba(255,255,255,.04); border:1px solid var(--line); }
+      .light.on { border-color:rgba(230,57,70,.45); background:rgba(230,57,70,.12); }
+      .checklist,.timeline { display:grid; gap:12px; }
+      .timeline-item { padding:12px 14px; border-radius:14px; background:rgba(255,255,255,.03); border:1px solid var(--line); }
+      .thermo { height:12px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; }
+      .thermo > div { height:100%; background:linear-gradient(90deg, var(--ok), var(--warn), var(--danger)); }
+      .status { display:inline-flex; padding:8px 12px; border-radius:999px; font-weight:700; }
+      .status.ok { background:rgba(116,198,157,.14); color:var(--ok); }
+      .status.warn { background:rgba(244,162,97,.16); color:var(--warn); }
+      .status.danger { background:rgba(230,57,70,.16); color:var(--danger); }
+      @media (max-width:900px) { .grid { grid-template-columns:1fr; } }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="muted">Garage municipal du comptoir</div>
+        <h1>Controle technique alcoolémie</h1>
+        <p class="muted" id="meta">Chargement du vehicule...</p>
+      </section>
+      <section class="grid">
+        <article class="stack">
+          <div class="panel">
+          <div class="gauge-wrap">
+            <div class="gauge" id="gauge" style="--angle:0deg">
+              <div class="center">
+                <div>
+                  <strong id="bacValue">0.000</strong>
+                  <div>g/L theorique</div>
+                  <p id="headline" class="muted"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+          <div class="panel">
+            <h3>Rapport atelier</h3>
+            <div class="thermo"><div id="thermoBar" style="width:0%"></div></div>
+            <div class="checklist" id="checklist"></div>
+          </div>
+        </article>
+        <aside class="panel">
+          <div id="statusChip" class="status ok">OK</div>
+          <h2 id="driverName">-</h2>
+          <p class="muted" id="teamName">-</p>
+          <div class="specs" id="specs"></div>
+          <h3>Voyants atelier</h3>
+          <div class="lights" id="lights"></div>
+          <h3>Historique recent</h3>
+          <div class="timeline" id="timeline"></div>
+        </aside>
+      </section>
+    </main>
+    <script src="/funShared.js"></script>
+    <script>
+      const { fetchJSON, formatDateTime, getQueryUserId, startAutoRefresh, setMeta } = window.FunShared;
+
+      function render(payload) {
+        const user = payload.spotlightUsers?.[0];
+        if (!user) {
+          document.getElementById("driverName").textContent = "Aucun vehicule a inspecter";
+          document.getElementById("headline").textContent = "Le banc de test attend son client.";
+          return;
+        }
+
+        const angle = Math.min(360, Math.max(0, (user.currentBac / 0.8) * 360));
+        const statusClass = user.controlStatus.includes("OK") ? "ok" : user.currentBac >= 0.5 ? "danger" : "warn";
+        document.getElementById("gauge").style.setProperty("--angle", `${angle}deg`);
+        document.getElementById("bacValue").textContent = Number(user.currentBac).toFixed(3);
+        document.getElementById("headline").textContent = user.controlHeadline;
+        document.getElementById("driverName").textContent = `${user.firstName} ${user.lastName}`;
+        document.getElementById("teamName").textContent = user.teamName ? `Ecurie ${user.teamName}` : "Vehicule sans ecurie";
+        document.getElementById("statusChip").className = `status ${statusClass}`;
+        document.getElementById("statusChip").textContent = user.controlStatus;
+        document.getElementById("thermoBar").style.width = `${Math.max(0, Math.min(100, user.engineTempLevel || 0))}%`;
+        document.getElementById("specs").innerHTML = `
+          <div class="spec">Pic theorique: <strong>${Number(user.peakBac).toFixed(3)} g/L</strong></div>
+          <div class="spec">Bieres comptabilisees: <strong>${user.totalDrinks}</strong></div>
+          <div class="spec">Alcool pur estime: <strong>${Number(user.totalAlcoholGrams).toFixed(2)} g</strong></div>
+          <div class="spec">Dernier passage atelier: <strong>${formatDateTime(user.lastDrinkAt)}</strong></div>
+        `;
+        document.getElementById("checklist").innerHTML = [
+          `Temperature moteur: ${user.engineTempLevel || 0}%`,
+          user.currentBac >= 0.5 ? "Decision: immobilisation immediate." : user.currentBac > 0 ? "Decision: contre-visite programmee." : "Decision: sortie atelier autorisee.",
+          `Resume: ${user.controlHeadline}`
+        ].map((line) => `<div class="spec">${line}</div>`).join("");
+        const lights = user.warningLights?.length ? user.warningLights : ["aucun voyant critique"];
+        document.getElementById("lights").innerHTML = lights.map((light) => `<div class="light ${light === "aucun voyant critique" ? "" : "on"}">${light}</div>`).join("");
+        document.getElementById("timeline").innerHTML = [
+          `Controle courant: ${Number(user.currentBac).toFixed(3)} g/L`,
+          `Seuil max vu aujourd hui: ${Number(user.peakBac).toFixed(3)} g/L`,
+          `Fiche cloturee le ${formatDateTime(user.lastDrinkAt)}`
+        ].map((line) => `<div class="timeline-item">${line}</div>`).join("");
+        setMeta("meta", `Derniere revision ${new Date(payload.generatedAt).toLocaleTimeString("fr-FR")}.`);
+      }
+
+      async function refresh() {
+        const userId = getQueryUserId();
+        const suffix = userId ? `?userId=${userId}` : "";
+        const payload = await fetchJSON(`/api/stats/fun/medical${suffix}`);
+        render(payload);
+      }
+
+      startAutoRefresh("controleTechnique", refresh, {
+        intervalMs: 45000,
+        minIntervalMs: 30000,
+        useStream: false,
+      });
+    </script>
+  </body>
+</html>

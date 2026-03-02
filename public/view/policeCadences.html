@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Police Nationale des Cadences</title>
+    <style>
+      :root {
+        --blue-1: #061526;
+        --blue-2: #0d2238;
+        --blue-3: #123455;
+        --line: rgba(255, 255, 255, 0.1);
+        --paper: rgba(255, 255, 255, 0.96);
+        --paper-line: rgba(8, 27, 48, 0.12);
+        --ink: #102235;
+        --muted: #4b6178;
+        --alert: #d7263d;
+        --gold: #c9a44c;
+        --ok: #2f6f4f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Arial, Helvetica, sans-serif;
+        color: white;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.04), transparent 20%),
+          radial-gradient(circle at top right, rgba(255,255,255,0.08), transparent 18%),
+          linear-gradient(180deg, var(--blue-1), var(--blue-2) 42%, #0b1d2f);
+      }
+
+      .stage {
+        width: min(calc(100vw - 24px), calc((100vh - 24px) * 16 / 9));
+        aspect-ratio: 16 / 9;
+        padding: 16px;
+      }
+
+      .page {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        gap: 14px;
+        grid-template-rows: auto auto 1fr;
+      }
+
+      .banner,
+      .summary,
+      .report,
+      .table-wrap,
+      .code-box {
+        border-radius: 24px;
+        overflow: hidden;
+      }
+
+      .banner {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 18px;
+        padding: 16px 20px;
+        background: linear-gradient(90deg, #0a2340, #143a60);
+        border: 1px solid var(--line);
+        box-shadow: 0 18px 30px rgba(0, 0, 0, 0.24);
+      }
+
+      .flag {
+        width: 92px;
+        height: 60px;
+        border-radius: 14px;
+        background: linear-gradient(90deg, #123e7a 0 33.33%, white 33.33% 66.66%, #c32033 66.66%);
+        border: 2px solid rgba(255, 255, 255, 0.18);
+      }
+
+      .banner small {
+        display: block;
+        color: rgba(255, 255, 255, 0.72);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.76rem;
+      }
+
+      .banner h1 {
+        margin: 4px 0 0;
+        font-size: clamp(2rem, 3vw, 3.4rem);
+        line-height: 0.92;
+        text-transform: uppercase;
+      }
+
+      .rf {
+        text-align: right;
+        font-size: 0.85rem;
+        line-height: 1.35;
+        color: rgba(255, 255, 255, 0.82);
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 14px;
+      }
+
+      .report {
+        padding: 18px 20px;
+        background: var(--paper);
+        color: var(--ink);
+        border: 1px solid var(--paper-line);
+        box-shadow: 0 18px 30px rgba(0, 0, 0, 0.14);
+      }
+
+      .report-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: flex-start;
+        margin-bottom: 14px;
+      }
+
+      .report-kicker {
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }
+
+      .report-title {
+        margin: 4px 0 0;
+        font-size: 1.8rem;
+        font-weight: 800;
+      }
+
+      .stamp {
+        padding: 10px 14px;
+        border-radius: 14px;
+        border: 2px solid var(--alert);
+        color: var(--alert);
+        font-weight: 800;
+        text-transform: uppercase;
+        transform: rotate(-6deg);
+        white-space: nowrap;
+      }
+
+      .flash {
+        font-size: clamp(2.1rem, 4vw, 4rem);
+        font-weight: 900;
+        line-height: 0.95;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+
+      .subflash {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 1rem;
+      }
+
+      .meta-grid {
+        margin-top: 16px;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .meta-card {
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: #f5f8fb;
+        border: 1px solid var(--paper-line);
+      }
+
+      .meta-card strong {
+        display: block;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+
+      .codes {
+        display: grid;
+        gap: 12px;
+      }
+
+      .code-box {
+        padding: 14px 16px;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--line);
+      }
+
+      .code-box strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #f6fbff;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.82rem;
+      }
+
+      .code-box span {
+        color: rgba(255, 255, 255, 0.78);
+      }
+
+      .main-grid {
+        min-height: 0;
+        display: grid;
+        gap: 14px;
+        grid-template-columns: 1fr 0.9fr;
+      }
+
+      .table-wrap,
+      .side-sheet {
+        min-height: 0;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--line);
+        box-shadow: 0 18px 30px rgba(0, 0, 0, 0.18);
+      }
+
+      .table-wrap {
+        padding: 14px 16px;
+      }
+
+      .table-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 10px;
+      }
+
+      .table-head h2,
+      .side-sheet h2 {
+        margin: 0;
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      th,
+      td {
+        padding: 11px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      td {
+        font-size: 0.95rem;
+      }
+
+      .identity strong {
+        display: block;
+        font-size: 1rem;
+      }
+
+      .identity span {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.86rem;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 9px;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .badge.low {
+        background: rgba(47, 111, 79, 0.16);
+        color: #8fd3ae;
+      }
+
+      .badge.mid {
+        background: rgba(201, 164, 76, 0.18);
+        color: #ffd980;
+      }
+
+      .badge.high {
+        background: rgba(215, 38, 61, 0.18);
+        color: #ff8b98;
+      }
+
+      .speed {
+        font-size: 1.15rem;
+        font-weight: 800;
+      }
+
+      .side-sheet {
+        padding: 14px 16px;
+        display: grid;
+        grid-template-rows: auto repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .sheet-card {
+        padding: 14px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .sheet-card strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .sheet-card p {
+        margin: 0;
+        line-height: 1.4;
+      }
+
+      .footer-note {
+        color: rgba(255, 255, 255, 0.68);
+        font-size: 0.84rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <main class="page">
+        <section class="banner">
+          <div class="flag" aria-hidden="true"></div>
+          <div>
+            <small>Ministere de l'Interieur • Direction nationale des cadences anormales</small>
+            <h1>Rapport de surveillance du debit</h1>
+          </div>
+          <div class="rf">
+            Republique Francaise<br />
+            Police nationale<br />
+            Unite d'observation mousse
+          </div>
+        </section>
+
+        <section class="summary">
+          <article class="report">
+            <div class="report-head">
+              <div>
+                <div class="report-kicker">Avis principal</div>
+                <div class="report-title">Constat de vitesse liquide</div>
+              </div>
+              <div class="stamp">Signalement</div>
+            </div>
+            <div id="leaderFlash" class="flash">Aucun exces releve</div>
+            <p id="leaderNotice" class="subflash">Le radar operationnel ne detecte aucun profil critique.</p>
+            <div id="metaGrid" class="meta-grid"></div>
+          </article>
+
+          <aside class="codes">
+            <div class="code-box">
+              <strong>Code 10</strong>
+              <span>Circulez. Debit conforme aux usages toleres.</span>
+            </div>
+            <div class="code-box">
+              <strong>Code 30</strong>
+              <span>Surveillance renforcee. Comportement mousse observe.</span>
+            </div>
+            <div class="code-box">
+              <strong>Code 60</strong>
+              <span>Flash confirmé. Avis administratif en preparation.</span>
+            </div>
+            <div class="code-box">
+              <strong>Code 90</strong>
+              <span>Grand exces de mousse. Priorite operationnelle immediate.</span>
+            </div>
+          </aside>
+        </section>
+
+        <section class="main-grid">
+          <section class="table-wrap">
+            <div class="table-head">
+              <h2>Main courante des profils controles</h2>
+              <div id="meta" class="footer-note"></div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Individu</th>
+                  <th>Vitesse retenue</th>
+                  <th>Qualification</th>
+                  <th>Dernier flash</th>
+                </tr>
+              </thead>
+              <tbody id="notices"></tbody>
+            </table>
+          </section>
+
+          <aside class="side-sheet">
+            <h2>Elements de langage</h2>
+            <div class="sheet-card">
+              <strong>Observation 01</strong>
+              <p id="sideObservation">Le dispositif attend son premier signalement.</p>
+            </div>
+            <div class="sheet-card">
+              <strong>Observation 02</strong>
+              <p id="sideContext">Aucun contexte de surchauffe houblonnee remonte.</p>
+            </div>
+            <div class="sheet-card">
+              <strong>Note de service</strong>
+              <p>
+                Document de demonstration visuelle. Toute ressemblance avec une vraie procedure
+                administrative est volontairement trop appuyee.
+              </p>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script src="/funShared.js"></script>
+    <script>
+      const { fetchJSON, formatPace, formatTime, startAutoRefresh, setMeta } =
+        window.FunShared;
+      const OBSERVATION_TEMPLATES = [
+        "Le sujet ${name} concentre l'attention du dispositif avec ${pace} retenus.",
+        "Les services notent que ${name} maintient une cadence de ${pace}, justifiant un suivi prioritaire.",
+        "Le profil ${name} demeure en tête des relevés avec ${pace} constatés.",
+        "L'individu ${name} est signalé pour une progression liquide évaluée à ${pace}.",
+        "Le poste central retient ${name} comme cible principale du contrôle à ${pace}.",
+        "Le radar principal associe ${name} à une vitesse opérationnelle de ${pace}.",
+        "Les vérifications en cours placent ${name} au sommet des signalements avec ${pace}.",
+        "Le dossier du jour mentionne ${name} en situation de cadence notable à ${pace}.",
+      ];
+      const CONTEXT_TEMPLATES = [
+        "${count} profils figurent actuellement sur la main courante. La densité de signalement reste ${density}.",
+        "Le tableau de surveillance recense ${count} cas actifs. Le niveau général est jugé ${density}.",
+        "Les remontées de terrain établissent ${count} individus sous observation, avec une intensité ${density}.",
+        "Le service central comptabilise ${count} profils contrôlés sur cette fenêtre, ambiance ${density}.",
+        "Le nombre de signalements simultanés atteint ${count}. Le contexte opérationnel est ${density}.",
+        "Les effectifs radar suivent ${count} profils à cet instant, ce qui traduit une pression ${density}.",
+      ];
+      const NOTE_TEMPLATES = [
+        "Document de démonstration visuelle. Toute ressemblance avec une vraie procédure administrative est volontairement trop appuyée.",
+        "Support de diffusion scénarisé. Le ton officiel est assumé, la gravité réelle nettement moins.",
+        "Pièce d'ambiance à usage télévisuel. Les formules sont sérieuses, l'objet l'est beaucoup moins.",
+        "Matériel de présentation interne. Le style est administratif, le sujet reste absurdement houblonné.",
+        "Notice de démonstration. Aucun agent n'a rédigé ce rapport avec un visage parfaitement neutre.",
+      ];
+
+      function statusClass(status) {
+        if (status.includes("grand")) return "high";
+        if (status.includes("flashe")) return "high";
+        if (status.includes("surveillance")) return "mid";
+        return "low";
+      }
+
+      function pickVariant(list, seed) {
+        return list[Math.abs(seed) % list.length];
+      }
+
+      function render(payload) {
+        const rows = payload.radarBoard || [];
+        const leader = rows[0] || null;
+        const seedBase = Math.round(
+          (leader?.litersPerHour || 0) * 1000 +
+            rows.length * 17 +
+            new Date(payload.generatedAt).getSeconds()
+        );
+
+        document.getElementById("leaderFlash").textContent = leader
+          ? `FLASHÉ A ${formatPace(leader.litersPerHour)}`
+          : "Aucun exces releve";
+        document.getElementById("leaderNotice").textContent = leader
+          ? `${leader.firstName} ${leader.lastName} est actuellement qualifie ${leader.status}. ${leader.notice}`
+          : "Le radar operationnel ne detecte aucun profil critique.";
+
+        document.getElementById("metaGrid").innerHTML = leader
+          ? `
+            <div class="meta-card">
+              <strong>Individu prioritaire</strong>
+              ${leader.firstName} ${leader.lastName}
+            </div>
+            <div class="meta-card">
+              <strong>Unite de rattachement</strong>
+              ${leader.teamName || "Aucune equipe renseignee"}
+            </div>
+            <div class="meta-card">
+              <strong>Dernier controle</strong>
+              ${formatTime(leader.lastDrinkAt)}
+            </div>
+          `
+          : `
+            <div class="meta-card"><strong>Etat</strong>Aucune alerte</div>
+            <div class="meta-card"><strong>Radar</strong>Veille passive</div>
+            <div class="meta-card"><strong>Journal</strong>Sans incident notable</div>
+          `;
+
+        document.getElementById("notices").innerHTML = rows.length
+          ? rows
+              .map(
+                (entry) => `
+                  <tr>
+                    <td>
+                      <div class="identity">
+                        <strong>${entry.firstName} ${entry.lastName}</strong>
+                        <span>${entry.teamName || "Sans equipe"}</span>
+                      </div>
+                    </td>
+                    <td><span class="speed">${formatPace(entry.litersPerHour)}</span></td>
+                    <td>
+                      <span class="badge ${statusClass(entry.status)}">${entry.status}</span>
+                    </td>
+                    <td>${formatTime(entry.lastDrinkAt)}</td>
+                  </tr>
+                `
+              )
+              .join("")
+          : `<tr><td colspan="4">Aucun individu controle a cette heure.</td></tr>`;
+
+        document.getElementById("sideObservation").textContent = leader
+          ? pickVariant(OBSERVATION_TEMPLATES, seedBase)
+              .replace("${name}", `${leader.firstName} ${leader.lastName}`)
+              .replace("${pace}", formatPace(leader.litersPerHour))
+          : "Le dispositif attend son premier signalement.";
+
+        document.getElementById("sideContext").textContent = rows.length > 1
+          ? pickVariant(CONTEXT_TEMPLATES, seedBase + 5)
+              .replace("${count}", rows.length)
+              .replace("${density}", rows.length >= 4 ? "elevee" : "moderee")
+          : "Aucun contexte de surchauffe houblonnee remonte.";
+
+        document.querySelector(".sheet-card:last-child p").textContent =
+          pickVariant(NOTE_TEMPLATES, seedBase + 11);
+
+        setMeta(
+          "meta",
+          `Main courante mise a jour a ${new Date(payload.generatedAt).toLocaleTimeString("fr-FR")}.`
+        );
+      }
+
+      async function refresh() {
+        render(await fetchJSON("/api/stats/fun/live"));
+      }
+
+      startAutoRefresh("policeCadences", refresh, {
+        intervalMs: 20000,
+        minIntervalMs: 10000,
+        useStream: true,
+      });
+    </script>
+  </body>
+</html>

@@ -21,17 +21,54 @@ interface BeerBuRow extends RowDataPacket {
   userId: number;
   drankAt: string;
   score: number;
+  brand: string;
+  type: string;
+  volume_ml: number;
   alcohol_degree: number;
   scan_id?: string | null;
 }
 
 interface UserRow {
   id: number;
+  first_name: string;
+  last_name: string;
   weight: number;  // en kg
   age: number;
   gender: 'M'|'F';
 }
 type Point = { ts: string; bac: number };
+type BacDrink = {
+  id: number;
+  drankAt: string;
+  score: number;
+  brand: string;
+  type: string;
+  volumeMl: number;
+  alcoholDegree: number;
+  alcoholGrams: number;
+  theoreticalPeakBac: number;
+  currentBacContribution: number;
+};
+type BacUser = {
+  id: number;
+  firstname: string;
+  lastname: string;
+  weight: number;
+  age: number;
+  gender: 'M' | 'F';
+};
+export type BacCurveResponse = {
+  user: BacUser;
+  summary: {
+    currentBac: number;
+    peakBac: number;
+    totalDrinks: number;
+    totalAlcoholGrams: number;
+    windowHours: number;
+  };
+  history: Point[];
+  drinks: BacDrink[];
+};
 type ConsumeCommittedResult = {
   response: ConsumeCurrentResponse;
   newlyCommitted: boolean;
@@ -49,10 +86,51 @@ const fetchActiveEvents = async (brand: string|null, type: string|null) => {
   return rows as { bonus_pts: number|null; multiplier: number|null }[];
 };
 export const computeBacCurve = async (userId: number): Promise<Point[]> => {
-  // --- 1) Récupère les consommations ---
+  const result = await getBacDetails(userId);
+  return result.history;
+};
+
+function toNumber(value: number | string | null | undefined): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return Number.parseFloat(value);
+  }
+
+  return 0;
+}
+
+function computeAlcoholGrams(volumeMl: number, alcoholDegree: number): number {
+  return volumeMl * (alcoholDegree / 100) * 0.789;
+}
+
+function computeCurrentContribution(params: {
+  alcoholGrams: number;
+  elapsedMinutes: number;
+  distributionRatio: number;
+  weightKg: number;
+  eliminationRate: number;
+}): number {
+  if (params.elapsedMinutes < 0) {
+    return 0;
+  }
+
+  const absorbedAlcohol = Math.min(1, params.elapsedMinutes / 45) * params.alcoholGrams;
+  const rawBac = absorbedAlcohol / (params.distributionRatio * params.weightKg);
+  const eliminated = params.eliminationRate * (params.elapsedMinutes / 60);
+  return Math.max(0, rawBac - eliminated);
+}
+
+export const getBacDetails = async (userId: number): Promise<BacCurveResponse> => {
   const [drinks] = await db.execute<BeerBuRow[]>(
     `SELECT bbu.drank_at   AS drankAt,
+            bbu.id,
             bbu.score,
+            beers.brand,
+            beers.type,
+            beers.volume_ml,
             beers.alcohol_degree
      FROM beer_bu bbu
      JOIN rfid_tags rt   ON rt.id = bbu.rfid_tag_id
@@ -61,58 +139,122 @@ export const computeBacCurve = async (userId: number): Promise<Point[]> => {
      ORDER BY bbu.drank_at ASC`,
     [userId]
   );
-  if (drinks.length === 0) {
-    return [];
-  }
 
-  // --- 2) Récupère l'utilisateur ---
   const [rawUsers] = await db.execute<RowDataPacket[]>(
-    `SELECT weight, age, gender
+    `SELECT id, first_name, last_name, weight, age, gender
      FROM users
      WHERE id = ?`,
     [userId]
   );
   const user = (rawUsers as UserRow[])[0];
+  if (!user) {
+    throw new Error(`Utilisateur ${userId} introuvable`);
+  }
+
   if (!user.weight || !user.gender) {
     throw new Error(`Données manquantes pour l'utilisateur ${userId}`);
   }
 
-  // --- 3) Paramètres cinétiques ---
-  const r    = user.gender === 'M' ? 0.68 : 0.55;
+  const weight = toNumber(user.weight);
+  const r = user.gender === 'M' ? 0.68 : 0.55;
   const beta = 0.15; // g/L/h
-
-  // --- 4) Fenêtre glissante sur les dernières 24h ---
   const nowTs = Date.now();
+
+  const normalizedDrinks: BacDrink[] = drinks.map((drink) => {
+    const volumeMl = toNumber(drink.volume_ml);
+    const alcoholDegree = toNumber(drink.alcohol_degree);
+    const alcoholGrams = computeAlcoholGrams(volumeMl, alcoholDegree);
+    const peakBac = alcoholGrams / (r * weight);
+    const elapsedMinutes = (nowTs - new Date(drink.drankAt).getTime()) / 60000;
+    const currentBacContribution = computeCurrentContribution({
+      alcoholGrams,
+      elapsedMinutes,
+      distributionRatio: r,
+      weightKg: weight,
+      eliminationRate: beta,
+    });
+
+    return {
+      id: drink.id,
+      drankAt: new Date(drink.drankAt).toISOString(),
+      score: Number(drink.score),
+      brand: drink.brand,
+      type: drink.type,
+      volumeMl,
+      alcoholDegree,
+      alcoholGrams: Number(alcoholGrams.toFixed(2)),
+      theoreticalPeakBac: Number(peakBac.toFixed(3)),
+      currentBacContribution: Number(currentBacContribution.toFixed(3)),
+    };
+  });
+
+  if (normalizedDrinks.length === 0) {
+    return {
+      user: {
+        id: user.id,
+        firstname: user.first_name,
+        lastname: user.last_name,
+        weight,
+        age: user.age,
+        gender: user.gender,
+      },
+      summary: {
+        currentBac: 0,
+        peakBac: 0,
+        totalDrinks: 0,
+        totalAlcoholGrams: 0,
+        windowHours: 24,
+      },
+      history: [],
+      drinks: [],
+    };
+  }
+
   const firstDrinkTs = new Date(drinks[0].drankAt).getTime();
   const startTs = Math.max(firstDrinkTs, nowTs - 24 * 60 * 60 * 1000);
   const endTs = nowTs;
 
-  // --- 5) Boucle minute-par-minute ---
   const allPoints: Point[] = [];
   for (let t = startTs; t <= endTs; t += 60_000) {
     let bacTotal = 0;
-    for (const d of drinks) {
-      const drankTs = new Date(d.drankAt).getTime();
-      const dtMin   = (t - drankTs) / 60000;   // minute en flottant
-      if (dtMin < 0) continue;
-      const weight = typeof user.weight === 'string'
-        ? parseFloat(user.weight)
-        : user.weight;
-      // absorption + élimination
-      const alcDeg = typeof d.alcohol_degree === 'string'
-        ? parseFloat(d.alcohol_degree)
-        : d.alcohol_degree;
-      const mAlc = (d.score * 330) * (alcDeg / 100) * 0.8;
-      const absMin   = Math.min(45, dtMin);
-      const absorbed = (absMin / 45) * mAlc;
-      const current = absorbed / (r * weight) - beta * (dtMin / 60);
-      bacTotal += Math.max(0, current);
+    for (const drink of normalizedDrinks) {
+      const drankTs = new Date(drink.drankAt).getTime();
+      const dtMin = (t - drankTs) / 60000;
+      bacTotal += computeCurrentContribution({
+        alcoholGrams: drink.alcoholGrams,
+        elapsedMinutes: dtMin,
+        distributionRatio: r,
+        weightKg: weight,
+        eliminationRate: beta,
+      });
     }
     allPoints.push({ ts: new Date(t).toISOString(), bac: +bacTotal.toFixed(3) });
   }
 
-  // --- 6) Filtrer pour ne garder que bac > 0 ---
-  return allPoints.filter(p => p.bac > 0);
+  const history = allPoints.filter(p => p.bac > 0);
+  const currentBac = history.length > 0 ? history[history.length - 1].bac : 0;
+  const peakBac = history.reduce((max, point) => Math.max(max, point.bac), 0);
+  const totalAlcoholGrams = normalizedDrinks.reduce((sum, drink) => sum + drink.alcoholGrams, 0);
+
+  return {
+    user: {
+      id: user.id,
+      firstname: user.first_name,
+      lastname: user.last_name,
+      weight,
+      age: user.age,
+      gender: user.gender,
+    },
+    summary: {
+      currentBac: Number(currentBac.toFixed(3)),
+      peakBac: Number(peakBac.toFixed(3)),
+      totalDrinks: normalizedDrinks.length,
+      totalAlcoholGrams: Number(totalAlcoholGrams.toFixed(2)),
+      windowHours: 24,
+    },
+    history,
+    drinks: normalizedDrinks.slice().reverse(),
+  };
 };
 
 export const recordBeerConsumed = async (event: BeerBu):

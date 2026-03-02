@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
@@ -95,9 +95,137 @@
       form button:hover {
         background: #125ba2;
       }
+      .quick-links {
+        margin: 30px auto 0;
+        max-width: 75%;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 16px #0001;
+        padding: 24px 32px;
+      }
+      .quick-links h1 {
+        margin: 0 0 8px;
+        font-size: 1.6rem;
+      }
+      .quick-links p {
+        margin: 0 0 18px;
+        color: #555;
+      }
+      .quick-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+      .quick-card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 16px;
+        background: #fafafa;
+      }
+      .quick-card h3 {
+        margin: 0 0 12px;
+        font-size: 1rem;
+      }
+      .quick-card a {
+        display: block;
+        margin-bottom: 8px;
+        color: #125ba2;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .quick-card a:hover {
+        text-decoration: underline;
+      }
+      .score-launcher {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .score-launcher input {
+        flex: 1;
+        min-width: 0;
+      }
+      .score-hint {
+        margin: 8px 0 0;
+        font-size: 0.92rem;
+        color: #666;
+      }
     </style>
   </head>
   <body>
+    <section class="quick-links">
+      <h1>Accès rapides</h1>
+      <p>
+        Cette page centralise l’administration et les écrans utiles
+        d’exploitation.
+      </p>
+      <div class="quick-grid">
+        <div class="quick-card">
+          <h3>Exploitation</h3>
+          <a href="/">Borne actuelle</a>
+          <a href="/select.html">Sélection V2</a>
+          <a href="/statsUser.html">Stats utilisateurs</a>
+          <a href="/bestTeamScore.html">Meilleure équipe</a>
+          <a href="/grandPrix.html">Grand Prix de la Descente</a>
+          <a href="/hallOfFoam.html">Hall of Foam</a>
+        </div>
+        <div class="quick-card">
+          <h3>Scores</h3>
+          <a href="/bestTeamScore.html">Écran meilleure équipe</a>
+          <a href="/grandPrix.html">Course litres / heure</a>
+          <a href="/hallOfFoam.html">Records absurdes</a>
+          <div class="score-launcher">
+            <input
+              id="teamScoreId"
+              type="number"
+              min="1"
+              placeholder="ID équipe"
+            />
+            <button type="button" id="openTeamScoreBtn">Ouvrir</button>
+          </div>
+          <p class="score-hint">Ouvre `/teamScore.html?equipe=ID`.</p>
+        </div>
+        <div class="quick-card">
+          <h3>Ecrans fun</h3>
+          <a href="/controleTechnique.html">Contrôle technique alcoolémie</a>
+          <a href="/bourseBiere.html">Bourse de la bière</a>
+          <a href="/policeCadences.html">Police des cadences</a>
+          <a href="/horseRace.html">Horse race</a>
+          <a href="/datingBuveurs.html">Dating app des buveurs</a>
+          <div class="score-launcher">
+            <input
+              id="controleUserId"
+              type="number"
+              min="1"
+              placeholder="ID utilisateur"
+            />
+            <button type="button" id="openControleBtn">Ouvrir</button>
+          </div>
+          <p class="score-hint">Ouvre `/controleTechnique.html?userId=ID`.</p>
+        </div>
+        <div class="quick-card">
+          <h3>Administration</h3>
+          <a href="/admin/dashboardadmin.html">Dashboard admin</a>
+          <a href="/admin/events.html">Événements spéciaux</a>
+          <a href="/admin/beer.html">Gestion bières</a>
+          <a href="/admin/team.html">Gestion équipes</a>
+          <div class="score-launcher">
+            <input
+              id="bacUserId"
+              type="number"
+              min="1"
+              placeholder="ID utilisateur"
+            />
+            <button type="button" id="openBacBtn">BAC</button>
+          </div>
+          <p class="score-hint">Ouvre `/api/beerbu/bac/:userId`.</p>
+        </div>
+        <div class="quick-card">
+          <h3>RFID</h3>
+          <a href="/admin/rfid-batch.html">Association RFID en rafale</a>
+        </div>
+      </div>
+    </section>
     <div class="accordion">
       <!-- Onglet Utilisateurs -->
       <div class="tab">
@@ -247,14 +375,10 @@
           style="padding: 0 32px; text-align: center"
         >
           <h3>Associer manuellement un UID RFID a une biere</h3>
-          <a href="http://localhost:3000/admin/rfid-add.html"
-            >Associer une bière à un RFID</a
-          >
+          <a href="/admin/rfid-add.html">Associer une bière à un RFID</a>
           <br />
           <br />
-          <a href="http://localhost:3000/admin/rfid-batch.html"
-            >Associer des tags en rafale</a
-          >
+          <a href="/admin/rfid-batch.html">Associer des tags en rafale</a>
         </div>
       </div>
     </div>
@@ -265,6 +389,47 @@
         if (!r.ok) throw new Error(`Fetch ${url} → ${r.status}`);
         return r.json();
       }
+
+      document
+        .getElementById("openTeamScoreBtn")
+        .addEventListener("click", () => {
+          const input = document.getElementById("teamScoreId");
+          const teamId = Number(input.value);
+          if (!Number.isInteger(teamId) || teamId <= 0) {
+            alert("Saisis un ID équipe valide.");
+            input.focus();
+            return;
+          }
+
+          window.location.href = `/teamScore.html?equipe=${teamId}`;
+        });
+
+      document.getElementById("openBacBtn").addEventListener("click", () => {
+        const input = document.getElementById("bacUserId");
+        const userId = Number(input.value);
+        if (!Number.isInteger(userId) || userId <= 0) {
+          alert("Saisis un ID utilisateur valide.");
+          input.focus();
+          return;
+        }
+
+        window.location.href = `/api/beerbu/bac/${userId}`;
+      });
+
+      document
+        .getElementById("openControleBtn")
+        .addEventListener("click", () => {
+          const input = document.getElementById("controleUserId");
+          const userId = Number(input.value);
+          if (!Number.isInteger(userId) || userId <= 0) {
+            alert("Saisis un ID utilisateur valide.");
+            input.focus();
+            return;
+          }
+
+          window.location.href = `/controleTechnique.html?userId=${userId}`;
+        });
+
       let teams = [];
 
       // --- USERS ---
@@ -294,16 +459,18 @@
                 .map(
                   (t) => `
                 <option value="${t.id}" ${
-                    user.team_id === t.id ? "selected" : ""
-                  }>
+                  user.team_id === t.id ? "selected" : ""
+                }>
                   ${t.name}
                 </option>
-              `
+              `,
                 )
                 .join("")}
             </select>
           </td>
           <td class="actions">
+            <button onclick="openBac(${user.id})">BAC</button>
+            <button onclick="openControle(${user.id})">CT</button>
             <button onclick="deleteUser(${user.id})">Supprimer</button>
             <button onclick="editUser(${user.id})">Modifier</button>
           </td>
@@ -451,6 +618,12 @@
         await fetch(`/api/users/${userId}`, { method: "DELETE" });
         fetchUsers();
       };
+      window.openBac = function (userId) {
+        window.location.href = `/api/beerbu/bac/${userId}`;
+      };
+      window.openControle = function (userId) {
+        window.location.href = `/controleTechnique.html?userId=${userId}`;
+      };
       window.editUser = async function (userId) {
         const row = document.querySelector(`tr[data-user-id="${userId}"]`);
         const current = {
@@ -541,15 +714,15 @@
         const volume_ml =
           Math.round(
             parseFloat(
-              prompt("Nouvelle quantité (ml) :", row.children[3].innerText)
-            ) * 100
+              prompt("Nouvelle quantité (ml) :", row.children[3].innerText),
+            ) * 100,
           ) / 100;
         if (isNaN(volume_ml)) return alert("Valeur non valide !");
         const alcohol_degree =
           Math.round(
             parseFloat(
-              prompt("Nouveau degré d'alcool (%) :", row.children[4].innerText)
-            ) * 100
+              prompt("Nouveau degré d'alcool (%) :", row.children[4].innerText),
+            ) * 100,
           ) / 100;
         if (isNaN(alcohol_degree)) return alert("Valeur non valide !");
         const res = await fetch(`/api/beers/${id}`, {
