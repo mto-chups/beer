@@ -2,12 +2,12 @@ const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
 const axios = require('axios');
 
-const PORT = 'COM5';
-const BAUD = 9600;
-const API_URL = 'http://localhost:3000/api/rfid/scan-current';
+const PORT = process.env.SERIAL_PORT || 'COM5';
+const BAUD = Number(process.env.SERIAL_BAUD || 9600);
+const API_URL = process.env.API_URL || 'http://localhost:3000/api/rfid/scan-current';
 
 const port = new SerialPort({ path: PORT, baudRate: BAUD });
-const parser = port.pipe(new ReadlineParser({ delimiter: '\r\n' }));
+const parser = port.pipe(new ReadlineParser({ delimiter: '\n' }));
 
 port.on('open', () => {
   console.log(`Serial ouvert sur ${PORT} @ ${BAUD}`);
@@ -20,9 +20,22 @@ port.on('error', (error) => {
 
 parser.on('data', async (line) => {
   try {
-    const { uid } = JSON.parse(line);
+    const cleanedLine = String(line).trim();
+    if (!cleanedLine) return;
+
+    let uid = null;
+    try {
+      const payload = JSON.parse(cleanedLine);
+      uid = payload?.uid;
+    } catch (_) {
+      // Fallback: accepte aussi une trame brute du type "E659A700"
+      if (/^[0-9A-Fa-f]{6,24}$/.test(cleanedLine)) {
+        uid = cleanedLine.toUpperCase();
+      }
+    }
+
     if (!uid) {
-      console.error('Trame sans uid:', line);
+      console.error('Trame sans uid:', cleanedLine);
       return;
     }
 

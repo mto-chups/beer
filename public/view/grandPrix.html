@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
@@ -29,7 +29,11 @@
         font-family: "Trebuchet MS", "Segoe UI", sans-serif;
         color: var(--text);
         background:
-          radial-gradient(circle at top, rgba(244, 185, 66, 0.2), transparent 30%),
+          radial-gradient(
+            circle at top,
+            rgba(244, 185, 66, 0.2),
+            transparent 30%
+          ),
           linear-gradient(135deg, var(--bg-1), var(--bg-2));
       }
 
@@ -216,10 +220,10 @@
   <body>
     <div class="wrap">
       <section class="hero">
-        <p class="eyebrow">Affichage fun en direct</p>
         <h1>Grand Prix de la Descente</h1>
         <p class="subhead">
-          Classement sur la derniere heure. Plus tu avances, plus ton moteur tourne a la mousse.
+          Classement sur la derniere heure. Plus tu avances, plus ton moteur
+          tourne a la mousse.
         </p>
         <p class="meta" id="meta">Chargement...</p>
       </section>
@@ -268,14 +272,18 @@
         const notes = document.getElementById("garageNotes");
         const live = data.liveRace || [];
         if (!live.length) {
-          notes.innerHTML = '<p class="empty">Aucun moteur en chauffe pour le moment.</p>';
+          notes.innerHTML =
+            '<p class="empty">Aucun moteur en chauffe pour le moment.</p>';
           return;
         }
 
         const leader = live[0];
         const challenger = live[1];
         const averagePace =
-          live.reduce((sum, entry) => sum + Number(entry.litersPerHour || 0), 0) / live.length;
+          live.reduce(
+            (sum, entry) => sum + Number(entry.litersPerHour || 0),
+            0,
+          ) / live.length;
 
         const lines = [
           `${leader.firstName} a le pied lourd avec ${formatPace(leader.litersPerHour)}.`,
@@ -298,7 +306,8 @@
         meta.textContent = `Fenetre glissante: ${data.liveWindowMinutes} min. Actualise le ${new Date(data.generatedAt).toLocaleTimeString("fr-FR")}.`;
 
         if (!live.length) {
-          track.innerHTML = '<p class="empty">Personne n a encore pris le depart sur cette fenetre.</p>';
+          track.innerHTML =
+            '<p class="empty">Personne n a encore pris le depart sur cette fenetre.</p>';
           leaderName.textContent = "Stand-by";
           leaderMeta.textContent = "Pas encore de litre/h recent a afficher.";
           renderGarageNotes(data);
@@ -306,14 +315,22 @@
         }
 
         const leader = live[0];
-        const maxPace = Math.max(...live.map((entry) => Number(entry.litersPerHour || 0)), 0.01);
+        const maxPace = Math.max(
+          ...live.map((entry) => Number(entry.litersPerHour || 0)),
+          0.01,
+        );
         leaderName.textContent = `${leader.firstName} ${leader.lastName}`;
         leaderMeta.textContent = `${formatPace(leader.litersPerHour)} • ${formatLiters(leader.liters)} sur la derniere heure`;
 
         track.innerHTML = live
           .map((entry, index) => {
-            const left = Math.max(4, Math.min(92, (Number(entry.litersPerHour || 0) / maxPace) * 92));
-            const team = entry.teamName ? `Ecurie ${entry.teamName}` : "Ecurie solo";
+            const left = Math.max(
+              4,
+              Math.min(92, (Number(entry.litersPerHour || 0) / maxPace) * 92),
+            );
+            const team = entry.teamName
+              ? `Ecurie ${entry.teamName}`
+              : "Ecurie solo";
             return `
               <article class="lane">
                 <div class="car" style="left: calc(${left}% - 34px)">${CAR_ICONS[index % CAR_ICONS.length]}</div>

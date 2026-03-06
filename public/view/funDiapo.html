@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Diapo</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: #000;
+        color: #f2f2f2;
+      }
+
+      .stage {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        background: #000;
+      }
+
+      #slideFrame {
+        width: 100vw;
+        height: 100vh;
+        border: 0;
+        display: block;
+        background: #111;
+      }
+
+      .overlay {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.48);
+        backdrop-filter: blur(2px);
+        pointer-events: none;
+      }
+
+      .title {
+        font-size: 1rem;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .meta {
+        font-size: 0.95rem;
+        color: #d4d4d4;
+        white-space: nowrap;
+      }
+
+      .empty {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 24px;
+      }
+
+      .empty h1 {
+        margin: 0 0 8px;
+        font-size: 1.5rem;
+      }
+
+      .empty p {
+        margin: 0;
+        color: #b9b9b9;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage" id="stage">
+      <iframe id="slideFrame" title="Diapo des ecrans fun"></iframe>
+      <!-- <div class="overlay" id="overlay">
+        <div class="title" id="slideTitle">Chargement...</div>
+        <div class="meta" id="slideMeta">--/-- • 120s</div>
+      </div> -->
+    </main>
+
+    <script>
+      const SLIDES = [
+        { title: "Grand Prix de la Descente", url: "/grandPrix.html" },
+        { title: "Hall of Foam", url: "/hallOfFoam.html" },
+        { title: "Bourse de la biere", url: "/bourseBiere.html" },
+        { title: "Police des cadences", url: "/policeCadences.html" },
+        { title: "Horse race", url: "/horseRace.html" },
+        { title: "Dating app des buveurs", url: "/datingBuveurs.html" },
+      ];
+
+      const ROTATION_MS = 120000;
+      const frame = document.getElementById("slideFrame");
+      // const titleEl = document.getElementById("slideTitle");
+      // const metaEl = document.getElementById("slideMeta");
+      const stage = document.getElementById("stage");
+      const overlay = document.getElementById("overlay");
+
+      let currentIndex = 0;
+      let nextSwitchAt = Date.now() + ROTATION_MS;
+
+      function formatRemaining() {
+        const remainingMs = Math.max(0, nextSwitchAt - Date.now());
+        return `${Math.ceil(remainingMs / 1000)}s`;
+      }
+
+      /**
+      function updateMeta() {
+        if (!SLIDES.length) {
+          metaEl.textContent = "0/0";
+          return;
+        }
+        metaEl.textContent = `${currentIndex + 1}/${SLIDES.length} • ${formatRemaining()}`;
+      }
+      **/
+      function showSlide(index) {
+        if (!SLIDES.length) return;
+        currentIndex =
+          ((index % SLIDES.length) + SLIDES.length) % SLIDES.length;
+        const slide = SLIDES[currentIndex];
+        frame.src = slide.url;
+        // titleEl.textContent = slide.title;
+        nextSwitchAt = Date.now() + ROTATION_MS;
+        //updateMeta();
+      }
+
+      function showEmptyState() {
+        overlay.style.display = "none";
+        stage.innerHTML = `
+          <section class="empty">
+            <div>
+              <h1>Aucun ecran fun configure</h1>
+              <p>Ajoute des pages dans la constante SLIDES de funDiapo.html.</p>
+            </div>
+          </section>
+        `;
+      }
+
+      if (!SLIDES.length) {
+        showEmptyState();
+      } else {
+        showSlide(0);
+        setInterval(() => showSlide(currentIndex + 1), ROTATION_MS);
+        //setInterval(updateMeta, 1000);
+      }
+    </script>
+  </body>
+</html>

@@ -4,48 +4,31 @@
     <meta charset="UTF-8" />
     <title>Association RFID en rafale</title>
     <style>
-      :root {
-        --bg: #f3efe5;
-        --card: #fffdf7;
-        --ink: #201a17;
-        --muted: #6f635b;
-        --accent: #c86b2a;
-        --accent-dark: #944411;
-        --ok: #1d7a43;
-        --ok-bg: #ddf5e6;
-        --err: #a92c2c;
-        --err-bg: #f9dddd;
-        --line: #e6d9c6;
-      }
-
       * {
         box-sizing: border-box;
       }
 
       body {
         margin: 0;
-        font-family: Georgia, "Times New Roman", serif;
-        color: var(--ink);
-        background:
-          radial-gradient(circle at top left, #fff4d2 0, transparent 28%),
-          linear-gradient(160deg, #f7f1e3 0%, #eadfca 100%);
+        font-family: sans-serif;
+        color: #222;
+        background: #f7f7f7;
         min-height: 100vh;
       }
 
       main {
-        width: min(1100px, calc(100vw - 32px));
-        margin: 32px auto;
+        width: min(75%, 1200px);
+        margin: 30px auto;
         display: grid;
         grid-template-columns: 360px 1fr;
-        gap: 24px;
+        gap: 18px;
       }
 
       .panel {
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 22px;
-        box-shadow: 0 14px 40px rgba(65, 37, 18, 0.08);
+        background: #fff;
+        border-radius: 8px;
+        padding: 24px;
+        box-shadow: 0 2px 16px #0001;
       }
 
       h1,
@@ -55,24 +38,25 @@
       }
 
       .eyebrow {
-        color: var(--accent-dark);
-        font-size: 0.9rem;
-        letter-spacing: 0.08em;
+        color: #666;
+        font-size: 0.88rem;
+        letter-spacing: 0.05em;
         text-transform: uppercase;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
+        font-weight: 700;
       }
 
       .current-beer {
         margin: 16px 0 22px;
         padding: 14px 16px;
-        border-radius: 14px;
-        background: #fbf5ea;
-        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fafafa;
+        border: 1px solid #ddd;
       }
 
       .current-beer strong {
         display: block;
-        font-size: 1.2rem;
+        font-size: 1.02rem;
         margin-bottom: 4px;
       }
 
@@ -90,33 +74,33 @@
 
       select,
       button {
-        border-radius: 12px;
-        border: 1px solid #cfbda6;
-        padding: 12px 14px;
+        border-radius: 5px;
+        border: 1px solid #bbb;
+        padding: 9px 12px;
         font-size: 1rem;
       }
 
       button {
         cursor: pointer;
-        background: var(--accent);
+        background: #1879e3;
         color: white;
         border: none;
         font-weight: bold;
-        transition: transform 0.12s ease, background 0.12s ease;
+        transition: background 0.15s ease;
       }
 
       button:hover {
-        background: var(--accent-dark);
-        transform: translateY(-1px);
+        background: #125ba2;
       }
 
       button.secondary {
-        background: #e9dcc7;
-        color: var(--ink);
+        background: #efefef;
+        color: #222;
+        border: 1px solid #ccc;
       }
 
       button.secondary:hover {
-        background: #d9c6aa;
+        background: #e0e0e0;
       }
 
       .actions {
@@ -130,19 +114,19 @@
         align-items: center;
         gap: 8px;
         margin-top: 18px;
-        color: var(--muted);
+        color: #666;
       }
 
       .dot {
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background: #b9a28b;
+        background: #b9b9b9;
       }
 
       .dot.live {
-        background: var(--ok);
-        box-shadow: 0 0 0 8px rgba(29, 122, 67, 0.12);
+        background: #239b56;
+        box-shadow: 0 0 0 8px rgba(35, 155, 86, 0.12);
       }
 
       .log-header {
@@ -159,21 +143,21 @@
       }
 
       .entry {
-        border-radius: 14px;
+        border-radius: 8px;
         padding: 14px 16px;
-        border: 1px solid var(--line);
-        background: white;
+        border: 1px solid #ddd;
+        background: #fff;
         animation: slide-in 0.18s ease;
       }
 
       .entry.success {
-        background: var(--ok-bg);
-        border-color: #bedecb;
+        background: #e9f8ef;
+        border-color: #b8e0c8;
       }
 
       .entry.error {
-        background: var(--err-bg);
-        border-color: #efc1c1;
+        background: #fdeeee;
+        border-color: #f1c8c8;
       }
 
       .entry-top {
@@ -184,15 +168,16 @@
       }
 
       .entry small {
-        color: var(--muted);
+        color: #666;
       }
 
       .empty {
-        color: var(--muted);
+        color: #666;
         padding: 18px;
         text-align: center;
-        border: 1px dashed #ccb59c;
-        border-radius: 14px;
+        border: 1px dashed #ccc;
+        border-radius: 8px;
+        background: #fafafa;
       }
 
       @keyframes slide-in {
@@ -209,6 +194,7 @@
       @media (max-width: 900px) {
         main {
           grid-template-columns: 1fr;
+          width: calc(100vw - 28px);
         }
       }
     </style>
