@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.docker
+    environment:
+      PORT: 3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: unless-stopped
+    volumes:
+      - scan_logs:/app/backend/logs
+
+volumes:
+  scan_logs:

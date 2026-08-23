@@ -39,6 +39,96 @@ Projet borne RFID + backend Node/TypeScript + pages web pour enregistrer des con
 
 ## Demarrage
 
+### Avec Docker et la base WAMP
+
+Docker execute le site et l'API. MySQL/MariaDB reste execute par WAMP sur
+Windows et n'est pas copie dans le conteneur. Les fichiers bruts du dossier
+`db/` ne sont ni lus ni montes par Docker.
+
+#### 1. Preparer WAMP
+
+Demarrer WAMP et verifier que MySQL/MariaDB ecoute sur le port `3306`. Depuis
+phpMyAdmin ou la console MySQL de WAMP, creer un utilisateur dedie en
+remplacant le mot de passe d'exemple :
+
+```sql
+CREATE DATABASE IF NOT EXISTS beer;
+CREATE USER IF NOT EXISTS 'beer_app'@'%' IDENTIFIED BY 'remplacer_par_un_mot_de_passe';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX
+  ON beer.* TO 'beer_app'@'%';
+FLUSH PRIVILEGES;
+```
+
+Le backend cree au demarrage les tables et index necessaires a la fiabilite
+des scans. Il a donc besoin des droits `CREATE`, `ALTER` et `INDEX` en plus des
+droits de lecture/ecriture.
+
+Si Docker obtient `ECONNREFUSED`, ouvrir la configuration MySQL/MariaDB depuis
+le menu WAMP et verifier que `bind-address` n'est pas limite a `127.0.0.1`.
+Utiliser par exemple `bind-address=0.0.0.0`, redemarrer WAMP, puis autoriser le
+port TCP 3306 dans le pare-feu Windows uniquement pour les reseaux prives.
+
+#### 2. Configurer les variables Docker
+
+Installer et demarrer Docker Desktop, puis depuis la racine du projet :
+
+```powershell
+Copy-Item .env.docker.example .env.docker
+```
+
+Modifier ensuite `DB_PASSWORD` dans `.env.docker`. Ce fichier est ignore par
+Git. `DB_HOST=host.docker.internal` permet au conteneur de joindre WAMP sur la
+machine Windows.
+
+#### 3. Demarrer l'application
+
+```powershell
+docker compose --env-file .env.docker up --build -d
+docker compose ps
+docker compose logs -f app
+```
+
+L'application est disponible sur [http://localhost:3000](http://localhost:3000).
+Pour utiliser un autre port Windows, modifier `APP_PORT` dans `.env.docker`.
+
+Le serveur refuse de demarrer tant que la connexion a WAMP n'est pas valide.
+Apres correction de WAMP ou des identifiants, Compose le relance
+automatiquement. Pour forcer un redemarrage ou tout arreter :
+
+```powershell
+docker compose restart app
+docker compose down
+```
+
+Les journaux de securisation des scans sont conserves dans le volume Docker
+nomme `beer_scan_logs`, y compris apres un `docker compose down` ordinaire.
+
+#### 4. Lancer le lecteur RFID sous Windows
+
+Le bridge serie reste hors de Docker afin d'acceder directement au port COM.
+Avec le conteneur en fonctionnement :
+
+```powershell
+Set-Location serial
+npm install
+$env:SERIAL_PORT = "COM5"
+$env:API_URL = "http://localhost:3000/api/beerbu/consume-current"
+npm run consume
+```
+
+Pour l'association RFID en rafale, utiliser l'URL
+`http://localhost:3000/api/rfid/scan-current` et `npm run rfid-batch`.
+
+#### Diagnostic rapide
+
+- `docker compose ps` doit indiquer que `app` est sain (`healthy`).
+- `docker compose logs app` affiche les erreurs de connexion WAMP.
+- [http://localhost:3000/](http://localhost:3000/) teste le site.
+- [http://localhost:3000/api/teams](http://localhost:3000/api/teams) teste une lecture en base.
+- Une consommation ou une association RFID valide confirme l'ecriture en base.
+
+### Sans Docker
+
 ### 1. Backend
 
 Depuis [backend/](backend/):

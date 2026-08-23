@@ -22,6 +22,7 @@ Le backend lit [`backend/.env`](/c:/Users/match/Documents/Code/beer/backend/.env
 
 ```env
 DB_HOST=localhost
+DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=
 DB_NAME=beer

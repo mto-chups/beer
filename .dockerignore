@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env*
+!.env.docker.example
+*.rar
+arduino
+db
+serial
+backend/node_modules
+backend/dist
+backend/logs
+backend/tests
+backend/coverage
+public/**/*.map
