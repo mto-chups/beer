@@ -18,9 +18,13 @@ char lastUid[24] = "";
 unsigned long lastScanAt = 0;
 
 void triggerServo() {
-  myservo.write(90);
-  delay(SERVO_HOLD_MS);
-  myservo.write(0);
+  //TODO ajouter la logique de çal ici
+  /**
+  * Ouvrir le moteur 1 + attendre
+  * Fermer le moteur 1 + attendre
+  * Ouvrir le moteur 2 + attendre
+  * Fermer le moteur 2 + attendre
+  */
 }
 
 void handleSerialInput() {
