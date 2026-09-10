@@ -8,11 +8,15 @@ const PORT = process.env.SERIAL_PORT || 'COM5';
 const BAUD = Number(process.env.SERIAL_BAUD || 9600);
 const API_URL =
   process.env.API_URL || 'http://localhost:3000/api/beerbu/consume-current';
+const KIOSK_SESSION_URL =
+  process.env.KIOSK_SESSION_URL || 'http://localhost:3000/api/kiosk-session/current';
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 5000);
 const RECONNECT_DELAY_MS = Number(process.env.RECONNECT_DELAY_MS || 2000);
 const DUPLICATE_COOLDOWN_MS = Number(process.env.DUPLICATE_COOLDOWN_MS || 1500);
 const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS || 1000);
 const RETRY_MAX_DELAY_MS = Number(process.env.RETRY_MAX_DELAY_MS || 30000);
+const USER_POLL_MS = Number(process.env.USER_POLL_MS || 500);
+const SERVO_COMMAND = process.env.SERVO_COMMAND || 'SERVO';
 
 const http = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
@@ -26,6 +30,8 @@ let lastUid = null;
 let lastUidAt = 0;
 const pendingScans = [];
 let retryTimer = null;
+let currentObservedUserId = null;
+let pollingUser = false;
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
@@ -36,6 +42,46 @@ function scheduleReconnect() {
   }, RECONNECT_DELAY_MS);
 
   console.log(`Reconnexion série dans ${RECONNECT_DELAY_MS} ms...`);
+}
+
+function sendSerialCommand(command) {
+  if (!port || !port.isOpen) {
+    console.warn(`Commande serie non envoyee, port ferme: ${command}`);
+    return;
+  }
+
+  port.write(`${command}\n`, (err) => {
+    if (err) {
+      console.error(`Erreur envoi commande serie "${command}":`, err.message);
+      return;
+    }
+
+    console.log(`Commande serie envoyee: ${command}`);
+  });
+}
+
+async function pollCurrentUser() {
+  if (pollingUser) return;
+
+  pollingUser = true;
+  try {
+    const resp = await http.get(KIOSK_SESSION_URL);
+    const userId = resp.data?.userId ?? null;
+
+    if (userId && userId !== currentObservedUserId) {
+      currentObservedUserId = userId;
+      sendSerialCommand(SERVO_COMMAND);
+      return;
+    }
+
+    if (!userId) {
+      currentObservedUserId = null;
+    }
+  } catch (err) {
+    console.error('Lecture utilisateur courant impossible:', err.message);
+  } finally {
+    pollingUser = false;
+  }
 }
 
 function enqueueUid(uid) {
@@ -190,3 +236,6 @@ process.on('uncaughtException', (err) => {
 });
 
 openSerialPort();
+setInterval(() => {
+  void pollCurrentUser();
+}, USER_POLL_MS);
