@@ -35,6 +35,9 @@ let currentObservedUserId = null;
 let pollingUser = false;
 let serialReady = false;
 let serialReadyTimer = null;
+let pendingServoUserId = null;
+let lastServoCommandAt = 0;
+const SERVO_RETRY_MS = 1500;
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
@@ -56,7 +59,24 @@ function setSerialReady(source) {
   if (serialReady) return;
   serialReady = true;
   currentObservedUserId = null;
+  pendingServoUserId = null;
+  lastServoCommandAt = 0;
   console.log(`Arduino pret (${source})`);
+}
+
+function handleArduinoEvent(event) {
+  console.log(`Arduino: ${event}`);
+
+  if (event === 'arduino_ready') {
+    setSerialReady('message de la carte');
+    return;
+  }
+
+  if (event === 'servo_received' && pendingServoUserId !== null) {
+    currentObservedUserId = pendingServoUserId;
+    pendingServoUserId = null;
+    lastServoCommandAt = 0;
+  }
 }
 
 function sendSerialCommand(command) {
@@ -67,7 +87,7 @@ function sendSerialCommand(command) {
       return;
     }
 
-    port.write(`${command}\n`, (writeError) => {
+    port.write(`${command}\r\n`, (writeError) => {
       if (writeError) {
         console.error(`Erreur envoi commande serie "${command}":`, writeError.message);
         resolve(false);
@@ -97,15 +117,25 @@ async function pollCurrentUser() {
     const userId = resp.data?.userId ?? null;
 
     if (userId && userId !== currentObservedUserId) {
+      if (
+        pendingServoUserId === userId &&
+        Date.now() - lastServoCommandAt < SERVO_RETRY_MS
+      ) {
+        return;
+      }
+
       const sent = await sendSerialCommand(SERVO_COMMAND);
       if (sent) {
-        currentObservedUserId = userId;
+        pendingServoUserId = userId;
+        lastServoCommandAt = Date.now();
       }
       return;
     }
 
     if (!userId) {
       currentObservedUserId = null;
+      pendingServoUserId = null;
+      lastServoCommandAt = 0;
     }
   } catch (err) {
     console.error('Lecture utilisateur courant impossible:', err.message);
@@ -202,13 +232,15 @@ function handleLine(rawLine) {
   const line = rawLine.trim();
   if (!line) return;
 
+  if (line.startsWith('EVENT:')) {
+    handleArduinoEvent(line.slice('EVENT:'.length).trim());
+    return;
+  }
+
   try {
     const payload = JSON.parse(line);
     if (payload.event && typeof payload.event === 'string') {
-      console.log(`Arduino: ${payload.event}`);
-      if (payload.event === 'arduino_ready') {
-        setSerialReady('message de la carte');
-      }
+      handleArduinoEvent(payload.event);
       return;
     }
 
@@ -248,7 +280,7 @@ function attachPortHandlers(serialPort) {
     scheduleReconnect();
   });
 
-  parser = serialPort.pipe(new ReadlineParser({ delimiter: '\r\n' }));
+  parser = serialPort.pipe(new ReadlineParser({ delimiter: '\n' }));
   parser.on('data', handleLine);
   parser.on('error', (err) => {
     console.error('Erreur parser série:', err.message);

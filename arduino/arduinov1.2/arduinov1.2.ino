@@ -36,6 +36,11 @@ char lastUid[24] = "";
 unsigned long lastScanAt = 0;
 bool cycleAutorise = false;
 
+void envoyerEvenement(const __FlashStringHelper* evenement) {
+  Serial.print(F("EVENT:"));
+  Serial.println(evenement);
+}
+
 void faireUnPas(uint8_t stepPin) {
   digitalWrite(stepPin, HIGH);
   delayMicroseconds(DEMI_PERIODE_PAS_US);
@@ -110,7 +115,7 @@ void terminerCycleApresRfid() {
 
   cycleAutorise = false;
   if (!fermerMoteur1()) {
-    Serial.println(F("{\"event\":\"motor1_limit_not_detected\"}"));
+    envoyerEvenement(F("motor1_limit_not_detected"));
     return;
   }
   delay(ATTENTE_COURTE_MS);
@@ -119,11 +124,11 @@ void terminerCycleApresRfid() {
   delay(ATTENTE_MOTEUR_2_MS);
 
   if (!fermerMoteur2()) {
-    Serial.println(F("{\"event\":\"motor2_limit_not_detected\"}"));
+    envoyerEvenement(F("motor2_limit_not_detected"));
     return;
   }
 
-  Serial.println(F("{\"event\":\"motor_cycle_complete\"}"));
+  envoyerEvenement(F("motor_cycle_complete"));
 }
 
 void handleSerialInput() {
@@ -147,17 +152,17 @@ void handleSerialInput() {
   }
   serialCommand[serialCommandLen] = '\0';
 
-  Serial.println(F("{\"event\":\"serial_data_received\"}"));
+  envoyerEvenement(F("serial_data_received"));
 
   if (strcmp(serialCommand, "SERVO") == 0) {
-    Serial.println(F("{\"event\":\"servo_received\"}"));
+    envoyerEvenement(F("servo_received"));
     if (triggerServo()) {
-      Serial.println(F("{\"event\":\"motor1_opened\"}"));
+      envoyerEvenement(F("motor1_opened"));
     } else {
-      Serial.println(F("{\"event\":\"servo_ignored_cycle_active\"}"));
+      envoyerEvenement(F("servo_ignored_cycle_active"));
     }
   } else {
-    Serial.println(F("{\"event\":\"serial_command_unknown\"}"));
+    envoyerEvenement(F("serial_command_unknown"));
   }
 
   serialCommandLen = 0;
@@ -217,7 +222,7 @@ void setup() {
   digitalWrite(SS_PIN, HIGH);
   SPI.begin();
   mfrc522.PCD_Init();
-  Serial.println(F("{\"event\":\"arduino_ready\"}"));
+  envoyerEvenement(F("arduino_ready"));
 }
 
 void loop() {
