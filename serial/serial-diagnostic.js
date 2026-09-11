@@ -12,8 +12,8 @@ const port = new SerialPort({
   autoOpen: false,
 });
 
-function sendByte(value, label) {
-  const payload = Buffer.from([value]);
+function sendCommand(value, label) {
+  const payload = Buffer.from([value, 0x0a]);
   port.write(payload, (writeError) => {
     if (writeError) {
       console.error(`Erreur envoi ${label}:`, writeError.message);
@@ -40,7 +40,7 @@ port.on('data', (chunk) => {
   if (text.includes('EVENT:pong')) {
     pingReceived = true;
     console.log('OK: la liaison PC -> Arduino -> PC fonctionne dans les deux sens.');
-    console.log('Tape s puis Entree pour tester l ouverture du moteur 1.');
+    console.log('Tape s puis Entree pour ouvrir le moteur 1, c puis Entree pour le fermer.');
   }
 });
 
@@ -69,7 +69,7 @@ port.open((openError) => {
 
   setTimeout(() => {
     console.log('Envoi du test PING...');
-    sendByte(0x50, 'P');
+    sendCommand(0x50, 'P');
 
     setTimeout(() => {
       if (!pingReceived) {
@@ -83,8 +83,11 @@ port.open((openError) => {
 if (process.stdin.isTTY) {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (input) => {
-    if (input.trim().toUpperCase() === 'S') {
-      sendByte(0x53, 'S');
+    const command = input.trim().toUpperCase();
+    if (command === 'S') {
+      sendCommand(0x53, 'S');
+    } else if (command === 'C') {
+      sendCommand(0x43, 'C');
     }
   });
 }

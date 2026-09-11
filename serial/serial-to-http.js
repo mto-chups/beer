@@ -21,6 +21,8 @@ const CLOSE_COMMAND = 'C';
 const PING_COMMAND = 'P';
 const SERIAL_READY_DELAY_MS = Number(process.env.SERIAL_READY_DELAY_MS || 3000);
 const SERIAL_PING_RETRY_MS = 1000;
+const COMMAND_ACK_TIMEOUT_MS = 1200;
+const COMMAND_MAX_ATTEMPTS = 2;
 const BRIDGE_PROTOCOL = 'motor-byte-v1';
 const KNOWN_ARDUINO_EVENTS = [
   'firmware_motor_byte_v1',
@@ -67,6 +69,37 @@ let firmwareDetected = false;
 let arduinoBootCount = 0;
 let motor1AwaitingRfid = false;
 let lastCloseCommandAt = 0;
+const commandAckTimers = new Map();
+
+function clearCommandAck(command) {
+  const timer = commandAckTimers.get(command);
+  if (timer) {
+    clearTimeout(timer);
+    commandAckTimers.delete(command);
+  }
+}
+
+function armCommandAck(command, attempt) {
+  if (command !== SERVO_COMMAND && command !== CLOSE_COMMAND) return;
+
+  clearCommandAck(command);
+  const timer = setTimeout(async () => {
+    commandAckTimers.delete(command);
+
+    if (attempt >= COMMAND_MAX_ATTEMPTS) {
+      console.error(
+        `Arduino ne confirme pas la commande ${command} apres ${attempt} essais. ` +
+          'Televerse arduino/arduinov1.2/arduinov1.2.ino puis relance le bridge.'
+      );
+      return;
+    }
+
+    console.warn(`Aucun accuse Arduino pour ${command}, nouvel essai unique...`);
+    await sendSerialCommand(command, attempt + 1);
+  }, COMMAND_ACK_TIMEOUT_MS);
+
+  commandAckTimers.set(command, timer);
+}
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
@@ -117,6 +150,23 @@ function scheduleSerialPing(delayMs = SERIAL_PING_RETRY_MS) {
 }
 
 function handleArduinoEvent(event) {
+  if (
+    event === 'serial_data_received' ||
+    event === 'servo_received' ||
+    event === 'motor1_opened' ||
+    event === 'servo_ignored_cycle_active'
+  ) {
+    clearCommandAck(SERVO_COMMAND);
+  }
+
+  if (
+    event === 'close_received' ||
+    event === 'motor1_closed_after_cancel' ||
+    event === 'close_ignored_no_active_cycle'
+  ) {
+    clearCommandAck(CLOSE_COMMAND);
+  }
+
   if (event === 'arduino_ready') {
     if (!serialReady) {
       console.log('Arduino: arduino_ready');
@@ -180,7 +230,7 @@ function handleArduinoEvent(event) {
   }
 }
 
-function sendSerialCommand(command) {
+function sendSerialCommand(command, attempt = 1) {
   return new Promise((resolve) => {
     if (!port || !port.isOpen || !serialReady) {
       console.warn(`Commande serie en attente, Arduino non pret: ${command}`);
@@ -188,8 +238,10 @@ function sendSerialCommand(command) {
       return;
     }
 
-    port.write(Buffer.from(command, 'ascii'), (writeError) => {
+    armCommandAck(command, attempt);
+    port.write(Buffer.from(`${command}\n`, 'ascii'), (writeError) => {
       if (writeError) {
+        clearCommandAck(command);
         console.error(`Erreur envoi commande serie "${command}":`, writeError.message);
         resolve(false);
         return;
@@ -197,13 +249,15 @@ function sendSerialCommand(command) {
 
       port.drain((drainError) => {
         if (drainError) {
+          clearCommandAck(command);
           console.error(`Erreur vidage port serie "${command}":`, drainError.message);
           resolve(false);
           return;
         }
 
         if (command !== PING_COMMAND || serialPingAttempts === 0) {
-          console.log(`Commande serie envoyee: ${command}`);
+          const attemptLabel = attempt > 1 ? ` (essai ${attempt})` : '';
+          console.log(`Commande serie envoyee: ${command}${attemptLabel}`);
         }
         resolve(true);
       });
@@ -410,6 +464,8 @@ function attachPortHandlers(serialPort) {
     console.error('Port série fermé');
     serialReady = false;
     serialLinkValidated = false;
+    clearCommandAck(SERVO_COMMAND);
+    clearCommandAck(CLOSE_COMMAND);
     if (serialPingTimer) {
       clearTimeout(serialPingTimer);
       serialPingTimer = null;
