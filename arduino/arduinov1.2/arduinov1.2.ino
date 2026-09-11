@@ -1,55 +1,166 @@
 #include <SPI.h>
 #include <MFRC522.h>
-#include <Servo.h>
 #include <string.h>
 
-constexpr uint8_t RST_PIN = 9;
+// Le reset RFID est deplace sur A2 pour laisser la broche 9 au moteur 2.
+constexpr uint8_t RST_PIN = A2;
 constexpr uint8_t SS_PIN = 10;
-constexpr uint8_t SERVO_PIN = 3;
-constexpr unsigned long SERVO_HOLD_MS = 1500;
 constexpr unsigned long SCAN_COOLDOWN_MS = 700;
 
+// Moteur 1
+constexpr uint8_t STEP1_PIN = 6;
+constexpr uint8_t DIR1_PIN = 7;
+
+// Moteur 2
+constexpr uint8_t STEP2_PIN = 8;
+constexpr uint8_t DIR2_PIN = 9;
+
+// Fins de course de fermeture
+constexpr uint8_t FC1_FERME_PIN = A5;
+constexpr uint8_t FC2_FERME_PIN = A3;
+
+constexpr int PAS_OUVERTURE_M1 = 4500;
+constexpr int PAS_OUVERTURE_M2 = 4650;
+constexpr int PAS_FERMETURE_MAX_M1 = PAS_OUVERTURE_M1 * 3;
+constexpr int PAS_FERMETURE_MAX_M2 = PAS_OUVERTURE_M2 * 3;
+constexpr unsigned int DEMI_PERIODE_PAS_US = 600;
+constexpr unsigned int DELAI_DIRECTION_US = 20;
+constexpr unsigned long ATTENTE_COURTE_MS = 300;
+constexpr unsigned long ATTENTE_MOTEUR_2_MS = 2000;
+
 MFRC522 mfrc522(SS_PIN, RST_PIN);
-Servo myservo;
 
 char serialCommand[16];
 uint8_t serialCommandLen = 0;
 char lastUid[24] = "";
 unsigned long lastScanAt = 0;
+bool cycleAutorise = false;
 
-void triggerServo() {
-  //TODO ajouter la logique de çal ici
-  /**
-  * Ouvrir le moteur 1 + attendre
-  * Fermer le moteur 1 + attendre
-  * Ouvrir le moteur 2 + attendre
-  * Fermer le moteur 2 + attendre
-  */
+void faireUnPas(uint8_t stepPin) {
+  digitalWrite(stepPin, HIGH);
+  delayMicroseconds(DEMI_PERIODE_PAS_US);
+  digitalWrite(stepPin, LOW);
+  delayMicroseconds(DEMI_PERIODE_PAS_US);
+}
+
+void ouvrirMoteur1() {
+  digitalWrite(DIR1_PIN, HIGH);
+  delayMicroseconds(DELAI_DIRECTION_US);
+
+  for (int i = 0; i < PAS_OUVERTURE_M1; i++) {
+    faireUnPas(STEP1_PIN);
+  }
+
+}
+
+bool fermerMoteur1() {
+  digitalWrite(DIR1_PIN, LOW);
+  delayMicroseconds(DELAI_DIRECTION_US);
+
+  for (int i = 0; i < PAS_FERMETURE_MAX_M1; i++) {
+    if (digitalRead(FC1_FERME_PIN) == LOW) {
+      return true;
+    }
+    faireUnPas(STEP1_PIN);
+  }
+
+  return digitalRead(FC1_FERME_PIN) == LOW;
+}
+
+void ouvrirMoteur2() {
+  digitalWrite(DIR2_PIN, LOW);
+  delayMicroseconds(DELAI_DIRECTION_US);
+
+  for (int i = 0; i < PAS_OUVERTURE_M2; i++) {
+    faireUnPas(STEP2_PIN);
+  }
+
+}
+
+bool fermerMoteur2() {
+  digitalWrite(DIR2_PIN, HIGH);
+  delayMicroseconds(DELAI_DIRECTION_US);
+
+  for (int i = 0; i < PAS_FERMETURE_MAX_M2; i++) {
+    if (digitalRead(FC2_FERME_PIN) == LOW) {
+      return true;
+    }
+    faireUnPas(STEP2_PIN);
+  }
+
+  return digitalRead(FC2_FERME_PIN) == LOW;
+}
+
+bool triggerServo() {
+  if (cycleAutorise) {
+    return false;
+  }
+
+  ouvrirMoteur1();
+  delay(ATTENTE_COURTE_MS);
+
+  cycleAutorise = true;
+  return true;
+}
+
+void terminerCycleApresRfid() {
+  if (!cycleAutorise) {
+    return;
+  }
+
+  cycleAutorise = false;
+  if (!fermerMoteur1()) {
+    Serial.println(F("{\"event\":\"motor1_limit_not_detected\"}"));
+    return;
+  }
+  delay(ATTENTE_COURTE_MS);
+
+  ouvrirMoteur2();
+  delay(ATTENTE_MOTEUR_2_MS);
+
+  if (!fermerMoteur2()) {
+    Serial.println(F("{\"event\":\"motor2_limit_not_detected\"}"));
+    return;
+  }
+
+  Serial.println(F("{\"event\":\"motor_cycle_complete\"}"));
 }
 
 void handleSerialInput() {
-  while (Serial.available() > 0) {
-    char c = static_cast<char>(Serial.read());
-
-    if (c == '\r') {
-      continue;
-    }
-
-    if (c == '\n') {
-      serialCommand[serialCommandLen] = '\0';
-      if (strcmp(serialCommand, "SERVO") == 0) {
-        triggerServo();
-      }
-      serialCommandLen = 0;
-      continue;
-    }
-
-    if (serialCommandLen < sizeof(serialCommand) - 1) {
-      serialCommand[serialCommandLen++] = c;
-    } else {
-      serialCommandLen = 0;
-    }
+  if (Serial.available() <= 0) {
+    return;
   }
+
+  serialCommandLen = Serial.readBytesUntil(
+    '\n',
+    serialCommand,
+    sizeof(serialCommand) - 1
+  );
+
+  while (
+    serialCommandLen > 0 &&
+    (serialCommand[serialCommandLen - 1] == '\r' ||
+     serialCommand[serialCommandLen - 1] == ' ' ||
+     serialCommand[serialCommandLen - 1] == '\t')
+  ) {
+    serialCommandLen--;
+  }
+  serialCommand[serialCommandLen] = '\0';
+
+  Serial.println(F("{\"event\":\"serial_data_received\"}"));
+
+  if (strcmp(serialCommand, "SERVO") == 0) {
+    Serial.println(F("{\"event\":\"servo_received\"}"));
+    if (triggerServo()) {
+      Serial.println(F("{\"event\":\"motor1_opened\"}"));
+    } else {
+      Serial.println(F("{\"event\":\"servo_ignored_cycle_active\"}"));
+    }
+  } else {
+    Serial.println(F("{\"event\":\"serial_command_unknown\"}"));
+  }
+
+  serialCommandLen = 0;
 }
 
 bool shouldSkipUid(const char* uid) {
@@ -64,7 +175,7 @@ bool shouldSkipUid(const char* uid) {
   return false;
 }
 
-void printUidAsJson() {
+bool printUidAsJson() {
   char uidHex[24];
   uint8_t pos = 0;
 
@@ -79,23 +190,34 @@ void printUidAsJson() {
   uidHex[pos] = '\0';
 
   if (shouldSkipUid(uidHex)) {
-    return;
+    return false;
   }
 
   Serial.print(F("{\"uid\":\""));
   Serial.print(uidHex);
   Serial.println(F("\"}"));
+  return true;
 }
 
 void setup() {
   Serial.begin(9600);
-  myservo.attach(SERVO_PIN);
-  myservo.write(0);
+  Serial.setTimeout(100);
+
+  digitalWrite(STEP1_PIN, LOW);
+  digitalWrite(STEP2_PIN, LOW);
+  pinMode(STEP1_PIN, OUTPUT);
+  pinMode(DIR1_PIN, OUTPUT);
+  pinMode(STEP2_PIN, OUTPUT);
+  pinMode(DIR2_PIN, OUTPUT);
+
+  pinMode(FC1_FERME_PIN, INPUT_PULLUP);
+  pinMode(FC2_FERME_PIN, INPUT_PULLUP);
 
   pinMode(SS_PIN, OUTPUT);
   digitalWrite(SS_PIN, HIGH);
   SPI.begin();
   mfrc522.PCD_Init();
+  Serial.println(F("{\"event\":\"arduino_ready\"}"));
 }
 
 void loop() {
@@ -109,7 +231,11 @@ void loop() {
     return;
   }
 
-  printUidAsJson();
+  const bool nouvellePuce = printUidAsJson();
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
+
+  if (nouvellePuce) {
+    terminerCycleApresRfid();
+  }
 }

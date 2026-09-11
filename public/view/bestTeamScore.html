@@ -2,6 +2,7 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>BestScoreboard</title>
     <style>
       body {
@@ -128,6 +129,130 @@
 
       #score-video {
         display: inline-block; /* pour que le centrage fonctionne */
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      .container {
+        width: min(94vw, 1400px);
+        max-width: none;
+        height: 100vh;
+        height: 100dvh;
+        margin: 0 auto;
+        padding: clamp(1rem, 2vh, 2rem) 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-rows: auto auto minmax(0, 1fr);
+        grid-template-areas:
+          "name name"
+          "points points"
+          "users ranking";
+        column-gap: clamp(2rem, 5vw, 6rem);
+        row-gap: clamp(0.4rem, 1vh, 1rem);
+      }
+
+      h1.team-name {
+        grid-area: name;
+        min-width: 0;
+        margin: 0;
+        font-size: clamp(3rem, 10vh, 7rem);
+        line-height: 0.95;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      div.team-points {
+        grid-area: points;
+        margin: 0;
+        font-size: clamp(2.5rem, 7vh, 5rem);
+        line-height: 1;
+      }
+
+      div.user-scores,
+      div.ranking {
+        min-height: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      div.user-scores {
+        grid-area: users;
+      }
+
+      div.ranking {
+        grid-area: ranking;
+      }
+
+      div.user-scores h2,
+      div.ranking h2 {
+        flex: 0 0 auto;
+        margin: 0 0 0.4em;
+        font-size: clamp(1.4rem, 3.2vh, 2.5rem);
+        line-height: 1.1;
+      }
+
+      div.user-scores div,
+      div.ranking ol {
+        font-size: clamp(0.85rem, 2vh, 1.25rem);
+        line-height: 1.2;
+      }
+
+      div.user-scores div {
+        min-height: 0;
+        margin: 0;
+        padding: 0.2em 0;
+      }
+
+      div.ranking ol {
+        min-height: 0;
+        margin: 0;
+        padding-left: 1.8em;
+        overflow: hidden;
+      }
+
+      div.ranking li {
+        margin: 0;
+        padding: 0.2em 0.35em;
+      }
+
+      #score-video-container {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        width: auto;
+        margin: 0;
+        justify-content: center;
+        align-items: center;
+        pointer-events: none;
+      }
+
+      #score-video {
+        display: block;
+        width: min(28vw, 420px);
+        max-height: 70vh;
+      }
+
+      @media (max-aspect-ratio: 4 / 3) {
+        .container {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 1fr);
+          grid-template-areas: "name" "points" "users" "ranking";
+        }
       }
     </style>
   </head>

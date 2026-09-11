@@ -17,6 +17,7 @@ const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS || 1000);
 const RETRY_MAX_DELAY_MS = Number(process.env.RETRY_MAX_DELAY_MS || 30000);
 const USER_POLL_MS = Number(process.env.USER_POLL_MS || 500);
 const SERVO_COMMAND = process.env.SERVO_COMMAND || 'SERVO';
+const SERIAL_READY_DELAY_MS = Number(process.env.SERIAL_READY_DELAY_MS || 3000);
 
 const http = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
@@ -32,6 +33,8 @@ const pendingScans = [];
 let retryTimer = null;
 let currentObservedUserId = null;
 let pollingUser = false;
+let serialReady = false;
+let serialReadyTimer = null;
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
@@ -44,19 +47,44 @@ function scheduleReconnect() {
   console.log(`Reconnexion série dans ${RECONNECT_DELAY_MS} ms...`);
 }
 
-function sendSerialCommand(command) {
-  if (!port || !port.isOpen) {
-    console.warn(`Commande serie non envoyee, port ferme: ${command}`);
-    return;
+function setSerialReady(source) {
+  if (serialReadyTimer) {
+    clearTimeout(serialReadyTimer);
+    serialReadyTimer = null;
   }
 
-  port.write(`${command}\n`, (err) => {
-    if (err) {
-      console.error(`Erreur envoi commande serie "${command}":`, err.message);
+  if (serialReady) return;
+  serialReady = true;
+  currentObservedUserId = null;
+  console.log(`Arduino pret (${source})`);
+}
+
+function sendSerialCommand(command) {
+  return new Promise((resolve) => {
+    if (!port || !port.isOpen || !serialReady) {
+      console.warn(`Commande serie en attente, Arduino non pret: ${command}`);
+      resolve(false);
       return;
     }
 
-    console.log(`Commande serie envoyee: ${command}`);
+    port.write(`${command}\n`, (writeError) => {
+      if (writeError) {
+        console.error(`Erreur envoi commande serie "${command}":`, writeError.message);
+        resolve(false);
+        return;
+      }
+
+      port.drain((drainError) => {
+        if (drainError) {
+          console.error(`Erreur vidage port serie "${command}":`, drainError.message);
+          resolve(false);
+          return;
+        }
+
+        console.log(`Commande serie envoyee: ${command}`);
+        resolve(true);
+      });
+    });
   });
 }
 
@@ -69,8 +97,10 @@ async function pollCurrentUser() {
     const userId = resp.data?.userId ?? null;
 
     if (userId && userId !== currentObservedUserId) {
-      currentObservedUserId = userId;
-      sendSerialCommand(SERVO_COMMAND);
+      const sent = await sendSerialCommand(SERVO_COMMAND);
+      if (sent) {
+        currentObservedUserId = userId;
+      }
       return;
     }
 
@@ -174,6 +204,14 @@ function handleLine(rawLine) {
 
   try {
     const payload = JSON.parse(line);
+    if (payload.event && typeof payload.event === 'string') {
+      console.log(`Arduino: ${payload.event}`);
+      if (payload.event === 'arduino_ready') {
+        setSerialReady('message de la carte');
+      }
+      return;
+    }
+
     if (!payload.uid || typeof payload.uid !== 'string') {
       console.warn('Ligne série ignorée (uid absent):', line);
       return;
@@ -188,6 +226,12 @@ function handleLine(rawLine) {
 function attachPortHandlers(serialPort) {
   serialPort.on('open', () => {
     console.log(`Serial ouvert sur ${PORT} @ ${BAUD}`);
+    serialReady = false;
+    if (serialReadyTimer) clearTimeout(serialReadyTimer);
+    console.log(`Attente initialisation Arduino: ${SERIAL_READY_DELAY_MS} ms...`);
+    serialReadyTimer = setTimeout(() => {
+      setSerialReady(`delai de secours de ${SERIAL_READY_DELAY_MS} ms`);
+    }, SERIAL_READY_DELAY_MS);
   });
 
   serialPort.on('error', (err) => {
@@ -196,6 +240,11 @@ function attachPortHandlers(serialPort) {
 
   serialPort.on('close', () => {
     console.error('Port série fermé');
+    serialReady = false;
+    if (serialReadyTimer) {
+      clearTimeout(serialReadyTimer);
+      serialReadyTimer = null;
+    }
     scheduleReconnect();
   });
 
