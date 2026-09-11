@@ -30,8 +30,6 @@ constexpr unsigned long ATTENTE_MOTEUR_2_MS = 2000;
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
-char serialCommand[16];
-uint8_t serialCommandLen = 0;
 char lastUid[24] = "";
 unsigned long lastScanAt = 0;
 bool cycleAutorise = false;
@@ -39,6 +37,7 @@ bool cycleAutorise = false;
 void envoyerEvenement(const __FlashStringHelper* evenement) {
   Serial.print(F("EVENT:"));
   Serial.println(evenement);
+  Serial.flush();
 }
 
 void faireUnPas(uint8_t stepPin) {
@@ -113,6 +112,7 @@ void terminerCycleApresRfid() {
     return;
   }
 
+  envoyerEvenement(F("rfid_cycle_started"));
   cycleAutorise = false;
   if (!fermerMoteur1()) {
     envoyerEvenement(F("motor1_limit_not_detected"));
@@ -131,41 +131,51 @@ void terminerCycleApresRfid() {
   envoyerEvenement(F("motor_cycle_complete"));
 }
 
-void handleSerialInput() {
-  if (Serial.available() <= 0) {
+void annulerAttenteRfid() {
+  if (!cycleAutorise) {
+    envoyerEvenement(F("close_ignored_no_active_cycle"));
     return;
   }
 
-  serialCommandLen = Serial.readBytesUntil(
-    '\n',
-    serialCommand,
-    sizeof(serialCommand) - 1
-  );
-
-  while (
-    serialCommandLen > 0 &&
-    (serialCommand[serialCommandLen - 1] == '\r' ||
-     serialCommand[serialCommandLen - 1] == ' ' ||
-     serialCommand[serialCommandLen - 1] == '\t')
-  ) {
-    serialCommandLen--;
+  cycleAutorise = false;
+  if (!fermerMoteur1()) {
+    envoyerEvenement(F("motor1_limit_not_detected"));
+    return;
   }
-  serialCommand[serialCommandLen] = '\0';
 
-  envoyerEvenement(F("serial_data_received"));
+  envoyerEvenement(F("motor1_closed_after_cancel"));
+}
 
-  if (strcmp(serialCommand, "SERVO") == 0) {
-    envoyerEvenement(F("servo_received"));
-    if (triggerServo()) {
-      envoyerEvenement(F("motor1_opened"));
-    } else {
-      envoyerEvenement(F("servo_ignored_cycle_active"));
+void handleSerialInput() {
+  while (Serial.available() > 0) {
+    const char commande = static_cast<char>(Serial.read());
+
+    if (commande == 'P') {
+      envoyerEvenement(F("pong"));
+      continue;
     }
-  } else {
-    envoyerEvenement(F("serial_command_unknown"));
-  }
 
-  serialCommandLen = 0;
+    if (commande == 'S') {
+      envoyerEvenement(F("serial_data_received"));
+      envoyerEvenement(F("servo_received"));
+      if (triggerServo()) {
+        envoyerEvenement(F("motor1_opened"));
+      } else {
+        envoyerEvenement(F("servo_ignored_cycle_active"));
+      }
+      continue;
+    }
+
+    if (commande == 'C') {
+      envoyerEvenement(F("close_received"));
+      annulerAttenteRfid();
+      continue;
+    }
+
+    if (commande != '\r' && commande != '\n' && commande != ' ' && commande != '\t') {
+      envoyerEvenement(F("serial_command_unknown"));
+    }
+  }
 }
 
 bool shouldSkipUid(const char* uid) {
@@ -206,7 +216,6 @@ bool printUidAsJson() {
 
 void setup() {
   Serial.begin(9600);
-  Serial.setTimeout(100);
 
   digitalWrite(STEP1_PIN, LOW);
   digitalWrite(STEP2_PIN, LOW);
@@ -222,6 +231,7 @@ void setup() {
   digitalWrite(SS_PIN, HIGH);
   SPI.begin();
   mfrc522.PCD_Init();
+  envoyerEvenement(F("firmware_motor_byte_v1"));
   envoyerEvenement(F("arduino_ready"));
 }
 

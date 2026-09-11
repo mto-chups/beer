@@ -16,8 +16,29 @@ const DUPLICATE_COOLDOWN_MS = Number(process.env.DUPLICATE_COOLDOWN_MS || 1500);
 const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS || 1000);
 const RETRY_MAX_DELAY_MS = Number(process.env.RETRY_MAX_DELAY_MS || 30000);
 const USER_POLL_MS = Number(process.env.USER_POLL_MS || 500);
-const SERVO_COMMAND = process.env.SERVO_COMMAND || 'SERVO';
+const SERVO_COMMAND = 'S';
+const CLOSE_COMMAND = 'C';
+const PING_COMMAND = 'P';
 const SERIAL_READY_DELAY_MS = Number(process.env.SERIAL_READY_DELAY_MS || 3000);
+const SERIAL_PING_RETRY_MS = 1000;
+const BRIDGE_PROTOCOL = 'motor-byte-v1';
+const KNOWN_ARDUINO_EVENTS = [
+  'firmware_motor_byte_v1',
+  'arduino_ready',
+  'pong',
+  'serial_data_received',
+  'servo_received',
+  'motor1_opened',
+  'servo_ignored_cycle_active',
+  'rfid_cycle_started',
+  'motor1_limit_not_detected',
+  'motor2_limit_not_detected',
+  'motor_cycle_complete',
+  'close_received',
+  'motor1_closed_after_cancel',
+  'close_ignored_no_active_cycle',
+  'serial_command_unknown',
+];
 
 const http = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
@@ -38,6 +59,14 @@ let serialReadyTimer = null;
 let pendingServoUserId = null;
 let lastServoCommandAt = 0;
 const SERVO_RETRY_MS = 1500;
+let serialLinkValidated = false;
+let serialPingTimer = null;
+let serialPingAttempts = 0;
+let waitingForSerialLinkLogged = false;
+let firmwareDetected = false;
+let arduinoBootCount = 0;
+let motor1AwaitingRfid = false;
+let lastCloseCommandAt = 0;
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
@@ -58,24 +87,96 @@ function setSerialReady(source) {
 
   if (serialReady) return;
   serialReady = true;
+  serialLinkValidated = false;
+  serialPingAttempts = 0;
   currentObservedUserId = null;
   pendingServoUserId = null;
   lastServoCommandAt = 0;
   console.log(`Arduino pret (${source})`);
+  scheduleSerialPing(100);
+}
+
+function scheduleSerialPing(delayMs = SERIAL_PING_RETRY_MS) {
+  if (serialPingTimer || !serialReady || serialLinkValidated) return;
+
+  serialPingTimer = setTimeout(async () => {
+    serialPingTimer = null;
+    if (!serialReady || serialLinkValidated) return;
+
+    const sent = await sendSerialCommand(PING_COMMAND);
+    if (sent) {
+      serialPingAttempts += 1;
+      if (serialPingAttempts === 3) {
+        console.error(
+          'Aucun PONG apres 3 essais: verifie le firmware Arduino et libere les broches D0/RX et D1/TX.'
+        );
+      }
+    }
+    scheduleSerialPing();
+  }, delayMs);
 }
 
 function handleArduinoEvent(event) {
-  console.log(`Arduino: ${event}`);
-
   if (event === 'arduino_ready') {
+    if (!serialReady) {
+      console.log('Arduino: arduino_ready');
+    }
     setSerialReady('message de la carte');
     return;
   }
 
-  if (event === 'servo_received' && pendingServoUserId !== null) {
-    currentObservedUserId = pendingServoUserId;
-    pendingServoUserId = null;
-    lastServoCommandAt = 0;
+  if (event === 'firmware_motor_byte_v1') {
+    arduinoBootCount += 1;
+    if (!firmwareDetected) {
+      firmwareDetected = true;
+      console.log('Firmware Arduino compatible detecte.');
+    } else if (arduinoBootCount === 2) {
+      console.error(
+        'Arduino redemarre plusieurs fois: verifie son alimentation et separe l alimentation des moteurs.'
+      );
+    }
+    return;
+  }
+
+  if (event === 'pong') {
+    serialLinkValidated = true;
+    serialPingAttempts = 0;
+    waitingForSerialLinkLogged = false;
+    if (serialPingTimer) {
+      clearTimeout(serialPingTimer);
+      serialPingTimer = null;
+    }
+    console.log('Liaison serie PC <-> Arduino validee.');
+    return;
+  }
+
+  console.log(`Arduino: ${event}`);
+
+  if (event === 'servo_received') {
+    motor1AwaitingRfid = true;
+    if (pendingServoUserId !== null) {
+      currentObservedUserId = pendingServoUserId;
+      pendingServoUserId = null;
+      lastServoCommandAt = 0;
+    }
+    return;
+  }
+
+  if (event === 'rfid_cycle_started') {
+    motor1AwaitingRfid = false;
+    lastCloseCommandAt = 0;
+    return;
+  }
+
+  if (
+    event === 'close_received' ||
+    event === 'motor1_closed_after_cancel' ||
+    event === 'close_ignored_no_active_cycle' ||
+    event === 'motor_cycle_complete' ||
+    event === 'motor1_limit_not_detected'
+  ) {
+    motor1AwaitingRfid = false;
+    lastCloseCommandAt = 0;
   }
 }
 
@@ -87,7 +188,7 @@ function sendSerialCommand(command) {
       return;
     }
 
-    port.write(`${command}\r\n`, (writeError) => {
+    port.write(Buffer.from(command, 'ascii'), (writeError) => {
       if (writeError) {
         console.error(`Erreur envoi commande serie "${command}":`, writeError.message);
         resolve(false);
@@ -101,7 +202,9 @@ function sendSerialCommand(command) {
           return;
         }
 
-        console.log(`Commande serie envoyee: ${command}`);
+        if (command !== PING_COMMAND || serialPingAttempts === 0) {
+          console.log(`Commande serie envoyee: ${command}`);
+        }
         resolve(true);
       });
     });
@@ -117,6 +220,14 @@ async function pollCurrentUser() {
     const userId = resp.data?.userId ?? null;
 
     if (userId && userId !== currentObservedUserId) {
+      if (!serialLinkValidated) {
+        if (!waitingForSerialLinkLogged) {
+          console.warn('Selection detectee, attente de la validation PC <-> Arduino.');
+          waitingForSerialLinkLogged = true;
+        }
+        return;
+      }
+
       if (
         pendingServoUserId === userId &&
         Date.now() - lastServoCommandAt < SERVO_RETRY_MS
@@ -126,13 +237,26 @@ async function pollCurrentUser() {
 
       const sent = await sendSerialCommand(SERVO_COMMAND);
       if (sent) {
+        currentObservedUserId = userId;
         pendingServoUserId = userId;
         lastServoCommandAt = Date.now();
+        motor1AwaitingRfid = true;
       }
       return;
     }
 
     if (!userId) {
+      if (
+        motor1AwaitingRfid &&
+        serialLinkValidated &&
+        Date.now() - lastCloseCommandAt >= SERVO_RETRY_MS
+      ) {
+        const sent = await sendSerialCommand(CLOSE_COMMAND);
+        if (sent) {
+          lastCloseCommandAt = Date.now();
+        }
+      }
+
       currentObservedUserId = null;
       pendingServoUserId = null;
       lastServoCommandAt = 0;
@@ -232,6 +356,14 @@ function handleLine(rawLine) {
   const line = rawLine.trim();
   if (!line) return;
 
+  const embeddedEvents = KNOWN_ARDUINO_EVENTS.filter((event) => line.includes(event));
+  if (embeddedEvents.length > 0) {
+    for (const event of embeddedEvents) {
+      handleArduinoEvent(event);
+    }
+    return;
+  }
+
   if (line.startsWith('EVENT:')) {
     handleArduinoEvent(line.slice('EVENT:'.length).trim());
     return;
@@ -259,6 +391,10 @@ function attachPortHandlers(serialPort) {
   serialPort.on('open', () => {
     console.log(`Serial ouvert sur ${PORT} @ ${BAUD}`);
     serialReady = false;
+    serialLinkValidated = false;
+    serialPingAttempts = 0;
+    firmwareDetected = false;
+    arduinoBootCount = 0;
     if (serialReadyTimer) clearTimeout(serialReadyTimer);
     console.log(`Attente initialisation Arduino: ${SERIAL_READY_DELAY_MS} ms...`);
     serialReadyTimer = setTimeout(() => {
@@ -273,6 +409,11 @@ function attachPortHandlers(serialPort) {
   serialPort.on('close', () => {
     console.error('Port série fermé');
     serialReady = false;
+    serialLinkValidated = false;
+    if (serialPingTimer) {
+      clearTimeout(serialPingTimer);
+      serialPingTimer = null;
+    }
     if (serialReadyTimer) {
       clearTimeout(serialReadyTimer);
       serialReadyTimer = null;
@@ -300,6 +441,11 @@ function openSerialPort() {
     port.open((err) => {
       if (!err) return;
       console.error(`Impossible d'ouvrir ${PORT}:`, err.message);
+      if (/access denied/i.test(err.message)) {
+        console.error(
+          `Le port ${PORT} est deja utilise. Ferme Arduino IDE et execute stop-rfid-bridge.cmd.`
+        );
+      }
       scheduleReconnect();
     });
   } catch (err) {
@@ -317,6 +463,22 @@ process.on('uncaughtException', (err) => {
 });
 
 openSerialPort();
+if (process.stdin.isTTY) {
+  process.stdin.setEncoding('utf8');
+  console.log('Test manuel: s + Entree ouvre M1, c + Entree ferme M1.');
+  process.stdin.on('data', (input) => {
+    const command = input.trim().toUpperCase();
+    if (command === 'S') {
+      void sendSerialCommand(SERVO_COMMAND);
+    } else if (command === 'C') {
+      void sendSerialCommand(CLOSE_COMMAND);
+    }
+  });
+}
+
+console.log(`Bridge RFID demarre depuis: ${__filename}`);
+console.log(`Protocole ${BRIDGE_PROTOCOL}, commande moteur: octet S (0x53).`);
+
 setInterval(() => {
   void pollCurrentUser();
 }, USER_POLL_MS);
