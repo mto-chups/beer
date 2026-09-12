@@ -1,7 +1,13 @@
 // src/controllers/beerBu.controller.ts
 import { Request, Response, NextFunction  } from 'express';
 import path from 'path';
-import { getBacDetails, consumeBeerScan, recordBeerConsumed, rejectScan } from '../services/beerBu.service';
+import {
+  getBacDetails,
+  consumeBeerScan,
+  recordBeerConsumed,
+  recordSelectedBeerConsumed,
+  rejectScan,
+} from '../services/beerBu.service';
 import { findRfidTagByUid } from '../services/rfidTag.service';
 import { getCurrentUserId, clearCurrentUserId } from '../services/kioskSession.service';
 import { broadcastScanEvent } from './scanCallback.controller';
@@ -43,6 +49,37 @@ export const consumeBeer = async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error(err);
     return res.status(err.status || 500).json({ message: err.message || 'Erreur serveur' });
+  }
+};
+
+export const consumeSelectedBeer = async (req: Request, res: Response) => {
+  const userId = Number(req.body.userId);
+  const beerId = Number(req.body.beerId);
+
+  if (!Number.isInteger(userId) || userId <= 0 || !Number.isInteger(beerId) || beerId <= 0) {
+    return res.status(400).json({ message: 'userId et beerId valides requis' });
+  }
+
+  try {
+    const result = await recordSelectedBeerConsumed({ userId, beerId });
+    try {
+      const eventId = `manual-beer-${result.id}`;
+      const scorePayload = await StatsService.getScoreStreamPayload(eventId, userId);
+      broadcastScoreUpdate(scorePayload);
+    } catch (notificationError) {
+      console.error('Biere enregistree, mais notification temps reel impossible:', notificationError);
+    }
+
+    return res.status(201).json({
+      message: 'Biere consommee enregistree',
+      id: result.id,
+      score: result.score,
+      userId,
+      beerId,
+    });
+  } catch (err: any) {
+    const status = err.message === 'Biere introuvable' ? 404 : 500;
+    return res.status(status).json({ message: err.message || 'Erreur serveur' });
   }
 };
 

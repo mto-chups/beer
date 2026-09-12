@@ -12,8 +12,19 @@ const beerServiceMocks = vi.hoisted(() => ({
 
 const kioskSessionMocks = vi.hoisted(() => ({
   getCurrentUserId: vi.fn(),
+  getCurrentKioskState: vi.fn(),
   setCurrentUserId: vi.fn(),
   clearCurrentUserId: vi.fn(),
+  finishCurrentUser: vi.fn(),
+  clearMotorAction: vi.fn(),
+}));
+
+const beerBuServiceMocks = vi.hoisted(() => ({
+  consumeBeerScan: vi.fn(),
+  getBacDetails: vi.fn(),
+  recordBeerConsumed: vi.fn(),
+  recordSelectedBeerConsumed: vi.fn(),
+  rejectScan: vi.fn(),
 }));
 
 const userServiceMocks = vi.hoisted(() => ({
@@ -45,9 +56,14 @@ vi.mock('../../src/services/beer.service', () => ({
 
 vi.mock('../../src/services/kioskSession.service', () => ({
   getCurrentUserId: kioskSessionMocks.getCurrentUserId,
+  getCurrentKioskState: kioskSessionMocks.getCurrentKioskState,
   setCurrentUserId: kioskSessionMocks.setCurrentUserId,
   clearCurrentUserId: kioskSessionMocks.clearCurrentUserId,
+  finishCurrentUser: kioskSessionMocks.finishCurrentUser,
+  clearMotorAction: kioskSessionMocks.clearMotorAction,
 }));
+
+vi.mock('../../src/services/beerBu.service', () => beerBuServiceMocks);
 
 vi.mock('../../src/services/user.service', () => ({
   findUserById: userServiceMocks.findUserById,
@@ -125,8 +141,37 @@ describe('API routes', () => {
     const response = await request(app).delete('/api/kiosk-session/current');
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ message: 'Utilisateur courant effacé' });
+    expect(response.body).toEqual({ message: 'Utilisateur courant effacé', motorAction: null });
     expect(kioskSessionMocks.clearCurrentUserId).toHaveBeenCalledTimes(1);
+  });
+
+  it('DELETE /api/kiosk-session/current stores the completed motor action', async () => {
+    const response = await request(app)
+      .delete('/api/kiosk-session/current')
+      .query({ motorAction: 'complete' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.motorAction).toBe('complete');
+    expect(kioskSessionMocks.finishCurrentUser).toHaveBeenCalledWith('complete');
+    expect(kioskSessionMocks.clearCurrentUserId).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/beerbu/consume-selected records the selected beer', async () => {
+    beerBuServiceMocks.recordSelectedBeerConsumed.mockResolvedValue({ id: 42, score: 3 });
+    statsServiceMocks.getScoreStreamPayload.mockResolvedValue({ eventId: 'manual-beer-42' });
+
+    const response = await request(app)
+      .post('/api/beerbu/consume-selected')
+      .send({ userId: 7, beerId: 12 });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ id: 42, score: 3, userId: 7, beerId: 12 });
+    expect(beerBuServiceMocks.recordSelectedBeerConsumed).toHaveBeenCalledWith({
+      userId: 7,
+      beerId: 12,
+    });
+    expect(kioskSessionMocks.clearCurrentUserId).not.toHaveBeenCalled();
+    expect(statsServiceMocks.getScoreStreamPayload).toHaveBeenCalledWith('manual-beer-42', 7);
   });
 
   it('GET /api/stats/fun returns the humorous dashboard payload', async () => {

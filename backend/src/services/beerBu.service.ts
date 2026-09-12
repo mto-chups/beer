@@ -305,6 +305,39 @@ export const recordBeerConsumed = async (event: BeerBu):
   };
 };
 
+export const recordSelectedBeerConsumed = async (params: {
+  beerId: number;
+  userId: number;
+}): Promise<{ id: number; score: number }> => {
+  const [rows] = await db.execute<RowDataPacket[]>(
+    `SELECT id
+       FROM beers
+      WHERE id = ?
+      LIMIT 1`,
+    [params.beerId]
+  );
+
+  if (!rows.length) {
+    throw new Error('Biere introuvable');
+  }
+
+  // beer_bu impose un rfid_tag_id unique. Un identifiant interne neuf permet
+  // de comptabiliser chaque depot manuel sans attendre de badge physique.
+  const manualUid = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const [tagResult] = await db.execute(
+    `INSERT INTO rfid_tags (uid, beer_id)
+     VALUES (?, ?)`,
+    [manualUid, params.beerId]
+  );
+  const rfidTagId = Number((tagResult as any).insertId);
+
+  return recordBeerConsumed({
+    rfidTagId,
+    userId: params.userId,
+    drankAt: new Date(),
+  });
+};
+
 async function findBeerTag(conn: PoolConnection, uid: string): Promise<{ id: number; brand: string | null; type: string | null } | null> {
   const [rows] = await conn.execute<RowDataPacket[]>(
     `SELECT rfid_tags.id, beers.brand, beers.type

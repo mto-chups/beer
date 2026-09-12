@@ -18,13 +18,22 @@ const RETRY_MAX_DELAY_MS = Number(process.env.RETRY_MAX_DELAY_MS || 30000);
 const USER_POLL_MS = Number(process.env.USER_POLL_MS || 500);
 const SERVO_COMMAND = 'S';
 const CLOSE_COMMAND = 'C';
+const COMPLETE_COMMAND = 'V';
 const PING_COMMAND = 'P';
 const SERIAL_READY_DELAY_MS = Number(process.env.SERIAL_READY_DELAY_MS || 3000);
 const SERIAL_PING_RETRY_MS = 1000;
 const COMMAND_ACK_TIMEOUT_MS = 1200;
 const COMMAND_MAX_ATTEMPTS = 2;
-const BRIDGE_PROTOCOL = 'motor-byte-v1';
+const BRIDGE_PROTOCOL = 'motor-state-v9';
 const KNOWN_ARDUINO_EVENTS = [
+  'firmware_motor_state_v9',
+  'firmware_motor_state_v8',
+  'firmware_motor_state_v7',
+  'firmware_motor_state_v6',
+  'firmware_motor_state_v5',
+  'firmware_motor_state_v4',
+  'firmware_motor_state_v3',
+  'firmware_motor_state_v2',
   'firmware_motor_byte_v1',
   'arduino_ready',
   'pong',
@@ -32,11 +41,19 @@ const KNOWN_ARDUINO_EVENTS = [
   'servo_received',
   'motor1_opened',
   'servo_ignored_cycle_active',
+  'rfid_reader_ready',
+  'rfid_reader_not_detected',
+  'rfid_waiting',
+  'rfid_no_tag_seen',
+  'rfid_tag_detected',
+  'rfid_read_failed',
   'rfid_cycle_started',
   'motor1_limit_not_detected',
   'motor2_limit_not_detected',
   'motor_cycle_complete',
   'close_received',
+  'complete_received',
+  'complete_ignored_cycle_active',
   'motor1_closed_after_cancel',
   'close_ignored_no_active_cycle',
   'serial_command_unknown',
@@ -67,6 +84,8 @@ let serialPingAttempts = 0;
 let waitingForSerialLinkLogged = false;
 let firmwareDetected = false;
 let arduinoBootCount = 0;
+let supportsCompleteCommand = false;
+let completeFirmwareWarningLogged = false;
 let motor1AwaitingRfid = false;
 let lastCloseCommandAt = 0;
 const commandAckTimers = new Map();
@@ -80,7 +99,7 @@ function clearCommandAck(command) {
 }
 
 function armCommandAck(command, attempt) {
-  if (command !== SERVO_COMMAND && command !== CLOSE_COMMAND) return;
+  if (command !== SERVO_COMMAND && command !== CLOSE_COMMAND && command !== COMPLETE_COMMAND) return;
 
   clearCommandAck(command);
   const timer = setTimeout(async () => {
@@ -122,9 +141,6 @@ function setSerialReady(source) {
   serialReady = true;
   serialLinkValidated = false;
   serialPingAttempts = 0;
-  currentObservedUserId = null;
-  pendingServoUserId = null;
-  lastServoCommandAt = 0;
   console.log(`Arduino pret (${source})`);
   scheduleSerialPing(100);
 }
@@ -167,6 +183,10 @@ function handleArduinoEvent(event) {
     clearCommandAck(CLOSE_COMMAND);
   }
 
+  if (event === 'complete_received' || event === 'complete_ignored_cycle_active') {
+    clearCommandAck(COMPLETE_COMMAND);
+  }
+
   if (event === 'arduino_ready') {
     if (!serialReady) {
       console.log('Arduino: arduino_ready');
@@ -175,8 +195,22 @@ function handleArduinoEvent(event) {
     return;
   }
 
-  if (event === 'firmware_motor_byte_v1') {
+  if (
+    event === 'firmware_motor_state_v9' ||
+    event === 'firmware_motor_state_v8' ||
+    event === 'firmware_motor_state_v7' ||
+    event === 'firmware_motor_state_v6' ||
+    event === 'firmware_motor_state_v5' ||
+    event === 'firmware_motor_state_v4' ||
+    event === 'firmware_motor_state_v3' ||
+    event === 'firmware_motor_state_v2' ||
+    event === 'firmware_motor_byte_v1'
+  ) {
     arduinoBootCount += 1;
+    if (event === 'firmware_motor_state_v9') {
+      supportsCompleteCommand = true;
+      completeFirmwareWarningLogged = false;
+    }
     if (!firmwareDetected) {
       firmwareDetected = true;
       console.log('Firmware Arduino compatible detecte.');
@@ -227,6 +261,17 @@ function handleArduinoEvent(event) {
   ) {
     motor1AwaitingRfid = false;
     lastCloseCommandAt = 0;
+
+    if (
+      event === 'motor1_closed_after_cancel' ||
+      event === 'close_ignored_no_active_cycle' ||
+      event === 'motor_cycle_complete' ||
+      event === 'motor1_limit_not_detected'
+    ) {
+      currentObservedUserId = null;
+      pendingServoUserId = null;
+      lastServoCommandAt = 0;
+    }
   }
 }
 
@@ -272,6 +317,32 @@ async function pollCurrentUser() {
   try {
     const resp = await http.get(KIOSK_SESSION_URL);
     const userId = resp.data?.userId ?? null;
+    const motorAction = resp.data?.motorAction ?? null;
+
+    if (!userId && motorAction) {
+      if (!serialLinkValidated) return;
+
+      if (motorAction === 'complete' && !supportsCompleteCommand) {
+        if (!completeFirmwareWarningLogged) {
+          console.error(
+            'Validation en attente: televerse le firmware motor_state_v9 pour activer le moteur 2.'
+          );
+          completeFirmwareWarningLogged = true;
+        }
+        return;
+      }
+
+      const command = motorAction === 'complete' ? COMPLETE_COMMAND : CLOSE_COMMAND;
+      const sent = await sendSerialCommand(command);
+      if (sent) {
+        motor1AwaitingRfid = false;
+        currentObservedUserId = null;
+        pendingServoUserId = null;
+        lastServoCommandAt = 0;
+        await http.delete(`${KIOSK_SESSION_URL}/motor-action`);
+      }
+      return;
+    }
 
     if (userId && userId !== currentObservedUserId) {
       if (!serialLinkValidated) {
@@ -410,6 +481,11 @@ function handleLine(rawLine) {
   const line = rawLine.trim();
   if (!line) return;
 
+  if (line.startsWith('RFID_DIAG:')) {
+    console.log(`Arduino: ${line}`);
+    return;
+  }
+
   const embeddedEvents = KNOWN_ARDUINO_EVENTS.filter((event) => line.includes(event));
   if (embeddedEvents.length > 0) {
     for (const event of embeddedEvents) {
@@ -449,6 +525,8 @@ function attachPortHandlers(serialPort) {
     serialPingAttempts = 0;
     firmwareDetected = false;
     arduinoBootCount = 0;
+    supportsCompleteCommand = false;
+    completeFirmwareWarningLogged = false;
     if (serialReadyTimer) clearTimeout(serialReadyTimer);
     console.log(`Attente initialisation Arduino: ${SERIAL_READY_DELAY_MS} ms...`);
     serialReadyTimer = setTimeout(() => {
@@ -466,6 +544,7 @@ function attachPortHandlers(serialPort) {
     serialLinkValidated = false;
     clearCommandAck(SERVO_COMMAND);
     clearCommandAck(CLOSE_COMMAND);
+    clearCommandAck(COMPLETE_COMMAND);
     if (serialPingTimer) {
       clearTimeout(serialPingTimer);
       serialPingTimer = null;
@@ -521,19 +600,21 @@ process.on('uncaughtException', (err) => {
 openSerialPort();
 if (process.stdin.isTTY) {
   process.stdin.setEncoding('utf8');
-  console.log('Test manuel: s + Entree ouvre M1, c + Entree ferme M1.');
+  console.log('Test manuel: S ouvre M1, C annule, V valide vers M2.');
   process.stdin.on('data', (input) => {
     const command = input.trim().toUpperCase();
     if (command === 'S') {
       void sendSerialCommand(SERVO_COMMAND);
     } else if (command === 'C') {
       void sendSerialCommand(CLOSE_COMMAND);
+    } else if (command === 'V') {
+      void sendSerialCommand(COMPLETE_COMMAND);
     }
   });
 }
 
 console.log(`Bridge RFID demarre depuis: ${__filename}`);
-console.log(`Protocole ${BRIDGE_PROTOCOL}, commande moteur: octet S (0x53).`);
+console.log(`Protocole ${BRIDGE_PROTOCOL}, commandes moteur: S=ouvrir, C=annuler, V=valider.`);
 
 setInterval(() => {
   void pollCurrentUser();

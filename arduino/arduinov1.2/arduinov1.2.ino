@@ -1,11 +1,15 @@
+#define MFRC522_SPICLOCK (100000u)
+
 #include <SPI.h>
 #include <MFRC522.h>
 #include <string.h>
 
-// Le reset RFID est deplace sur A2 pour laisser la broche 9 au moteur 2.
+// RFID: D10 pour SDA/SS, A2 pour RST, et le bus SPI standard D11-D13.
 constexpr uint8_t RST_PIN = A2;
 constexpr uint8_t SS_PIN = 10;
 constexpr unsigned long SCAN_COOLDOWN_MS = 700;
+constexpr unsigned long RFID_POLL_INTERVAL_MS = 75;
+constexpr unsigned long RFID_NO_TAG_REPORT_MS = 3000;
 
 // Moteur 1
 constexpr uint8_t STEP1_PIN = 6;
@@ -28,11 +32,29 @@ constexpr unsigned int DELAI_DIRECTION_US = 20;
 constexpr unsigned long ATTENTE_COURTE_MS = 300;
 constexpr unsigned long ATTENTE_MOTEUR_2_MS = 2000;
 
+enum EtatCycle : uint8_t {
+  REPOS,
+  OUVERTURE_M1,
+  ATTENTE_APRES_OUVERTURE_M1,
+  ATTENTE_RFID,
+  FERMETURE_M1_ANNULATION,
+  FERMETURE_M1_RFID,
+  ATTENTE_APRES_FERMETURE_M1,
+  OUVERTURE_M2,
+  ATTENTE_APRES_OUVERTURE_M2,
+  FERMETURE_M2
+};
+
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 char lastUid[24] = "";
 unsigned long lastScanAt = 0;
-bool cycleAutorise = false;
+unsigned long attenteDepuis = 0;
+unsigned long lastRfidPollAt = 0;
+unsigned long rfidWaitingSince = 0;
+int pasEffectues = 0;
+EtatCycle etatCycle = REPOS;
+bool rfidNoTagReported = false;
 
 void envoyerEvenement(const __FlashStringHelper* evenement) {
   Serial.print(F("EVENT:"));
@@ -47,134 +69,250 @@ void faireUnPas(uint8_t stepPin) {
   delayMicroseconds(DEMI_PERIODE_PAS_US);
 }
 
-void ouvrirMoteur1() {
-  digitalWrite(DIR1_PIN, HIGH);
+void preparerMouvement(uint8_t dirPin, uint8_t direction, EtatCycle nouvelEtat) {
+  digitalWrite(dirPin, direction);
   delayMicroseconds(DELAI_DIRECTION_US);
-
-  for (int i = 0; i < PAS_OUVERTURE_M1; i++) {
-    faireUnPas(STEP1_PIN);
-  }
-
+  pasEffectues = 0;
+  etatCycle = nouvelEtat;
 }
 
-bool fermerMoteur1() {
-  digitalWrite(DIR1_PIN, LOW);
-  delayMicroseconds(DELAI_DIRECTION_US);
-
-  for (int i = 0; i < PAS_FERMETURE_MAX_M1; i++) {
-    if (digitalRead(FC1_FERME_PIN) == LOW) {
-      return true;
-    }
-    faireUnPas(STEP1_PIN);
-  }
-
-  return digitalRead(FC1_FERME_PIN) == LOW;
+void demarrerOuvertureMoteur1() {
+  preparerMouvement(DIR1_PIN, HIGH, OUVERTURE_M1);
 }
 
-void ouvrirMoteur2() {
-  digitalWrite(DIR2_PIN, LOW);
-  delayMicroseconds(DELAI_DIRECTION_US);
-
-  for (int i = 0; i < PAS_OUVERTURE_M2; i++) {
-    faireUnPas(STEP2_PIN);
-  }
-
+void demarrerFermetureMoteur1(EtatCycle nouvelEtat) {
+  preparerMouvement(DIR1_PIN, LOW, nouvelEtat);
 }
 
-bool fermerMoteur2() {
-  digitalWrite(DIR2_PIN, HIGH);
-  delayMicroseconds(DELAI_DIRECTION_US);
+void demarrerOuvertureMoteur2() {
+  preparerMouvement(DIR2_PIN, LOW, OUVERTURE_M2);
+}
 
-  for (int i = 0; i < PAS_FERMETURE_MAX_M2; i++) {
-    if (digitalRead(FC2_FERME_PIN) == LOW) {
-      return true;
-    }
-    faireUnPas(STEP2_PIN);
-  }
-
-  return digitalRead(FC2_FERME_PIN) == LOW;
+void demarrerFermetureMoteur2() {
+  preparerMouvement(DIR2_PIN, HIGH, FERMETURE_M2);
 }
 
 bool triggerServo() {
-  if (cycleAutorise) {
+  if (etatCycle != REPOS) {
     return false;
   }
 
-  ouvrirMoteur1();
-  delay(ATTENTE_COURTE_MS);
-
-  cycleAutorise = true;
+  demarrerOuvertureMoteur1();
   return true;
 }
 
-void terminerCycleApresRfid() {
-  if (!cycleAutorise) {
+void annulerAttenteRfid() {
+  if (
+    etatCycle == REPOS ||
+    etatCycle == OUVERTURE_M1 ||
+    etatCycle == ATTENTE_APRES_OUVERTURE_M1 ||
+    etatCycle == ATTENTE_RFID
+  ) {
+    demarrerFermetureMoteur1(FERMETURE_M1_ANNULATION);
     return;
   }
 
-  envoyerEvenement(F("rfid_cycle_started"));
-  cycleAutorise = false;
-  if (!fermerMoteur1()) {
-    envoyerEvenement(F("motor1_limit_not_detected"));
-    return;
+  if (etatCycle != FERMETURE_M1_ANNULATION) {
+    envoyerEvenement(F("close_ignored_no_active_cycle"));
   }
-  delay(ATTENTE_COURTE_MS);
-
-  ouvrirMoteur2();
-  delay(ATTENTE_MOTEUR_2_MS);
-
-  if (!fermerMoteur2()) {
-    envoyerEvenement(F("motor2_limit_not_detected"));
-    return;
-  }
-
-  envoyerEvenement(F("motor_cycle_complete"));
 }
 
-void annulerAttenteRfid() {
-  if (!cycleAutorise) {
-    envoyerEvenement(F("close_ignored_no_active_cycle"));
-    return;
+bool validerDepotManuel() {
+  if (
+    etatCycle == OUVERTURE_M1 ||
+    etatCycle == ATTENTE_APRES_OUVERTURE_M1 ||
+    etatCycle == ATTENTE_RFID
+  ) {
+    demarrerFermetureMoteur1(FERMETURE_M1_RFID);
+    return true;
   }
 
-  cycleAutorise = false;
-  if (!fermerMoteur1()) {
-    envoyerEvenement(F("motor1_limit_not_detected"));
-    return;
-  }
-
-  envoyerEvenement(F("motor1_closed_after_cancel"));
+  return false;
 }
 
 void handleSerialInput() {
   while (Serial.available() > 0) {
     const char commande = static_cast<char>(Serial.read());
 
-    if (commande == 'P') {
+    if (commande == 'P' || commande == 'p') {
       envoyerEvenement(F("pong"));
       continue;
     }
 
-    if (commande == 'S') {
+    if (commande == 'S' || commande == 's') {
       envoyerEvenement(F("serial_data_received"));
       envoyerEvenement(F("servo_received"));
-      if (triggerServo()) {
-        envoyerEvenement(F("motor1_opened"));
-      } else {
+      if (!triggerServo()) {
         envoyerEvenement(F("servo_ignored_cycle_active"));
       }
       continue;
     }
 
-    if (commande == 'C') {
+    if (commande == 'C' || commande == 'c') {
       envoyerEvenement(F("close_received"));
       annulerAttenteRfid();
+      continue;
+    }
+
+    if (commande == 'V' || commande == 'v') {
+      envoyerEvenement(F("complete_received"));
+      if (!validerDepotManuel()) {
+        envoyerEvenement(F("complete_ignored_cycle_active"));
+      }
       continue;
     }
 
     if (commande != '\r' && commande != '\n' && commande != ' ' && commande != '\t') {
       envoyerEvenement(F("serial_command_unknown"));
     }
+  }
+}
+
+void terminerFermetureMoteur1(bool annulation) {
+  if (annulation) {
+    etatCycle = REPOS;
+    envoyerEvenement(F("motor1_closed_after_cancel"));
+    return;
+  }
+
+  attenteDepuis = millis();
+  etatCycle = ATTENTE_APRES_FERMETURE_M1;
+}
+
+void signalerErreurFinCourse(const __FlashStringHelper* evenement) {
+  etatCycle = REPOS;
+  envoyerEvenement(evenement);
+}
+
+void envoyerDiagnosticRfid() {
+  const byte version = mfrc522.PCD_ReadRegister(MFRC522::VersionReg);
+  const byte antenna = mfrc522.PCD_ReadRegister(MFRC522::TxControlReg) & 0x03;
+  const byte gain = mfrc522.PCD_GetAntennaGain();
+
+  Serial.print(F("RFID_DIAG:version=0x"));
+  if (version < 0x10) Serial.print('0');
+  Serial.print(version, HEX);
+  Serial.print(F(",antenna=0x"));
+  if (antenna < 0x10) Serial.print('0');
+  Serial.print(antenna, HEX);
+  Serial.print(F(",gain=0x"));
+  if (gain < 0x10) Serial.print('0');
+  Serial.println(gain, HEX);
+  Serial.flush();
+}
+
+void initialiserLecteurRfid() {
+  pinMode(RST_PIN, OUTPUT);
+  digitalWrite(RST_PIN, LOW);
+  delay(5);
+  digitalWrite(RST_PIN, HIGH);
+  delay(50);
+
+  mfrc522.PCD_Init();
+  delay(50);
+  mfrc522.PCD_Init();
+  delay(10);
+  mfrc522.PCD_WriteRegister(MFRC522::TxModeReg, 0x00);
+  mfrc522.PCD_WriteRegister(MFRC522::RxModeReg, 0x00);
+  mfrc522.PCD_WriteRegister(MFRC522::ModWidthReg, 0x26);
+  mfrc522.PCD_AntennaOn();
+  mfrc522.PCD_SetAntennaGain(MFRC522::RxGain_max);
+}
+
+void preparerLectureRfid() {
+  mfrc522.PCD_WriteRegister(MFRC522::TxModeReg, 0x00);
+  mfrc522.PCD_WriteRegister(MFRC522::RxModeReg, 0x00);
+  mfrc522.PCD_WriteRegister(MFRC522::ModWidthReg, 0x26);
+  mfrc522.PCD_AntennaOn();
+  mfrc522.PCD_SetAntennaGain(MFRC522::RxGain_max);
+  const byte version = mfrc522.PCD_ReadRegister(MFRC522::VersionReg);
+  if (version == 0x00 || version == 0xFF) {
+    envoyerEvenement(F("rfid_reader_not_detected"));
+    return;
+  }
+
+  lastRfidPollAt = 0;
+  rfidWaitingSince = millis();
+  rfidNoTagReported = false;
+  envoyerDiagnosticRfid();
+  envoyerEvenement(F("rfid_waiting"));
+}
+
+void mettreAJourCycleMoteurs() {
+  switch (etatCycle) {
+    case REPOS:
+    case ATTENTE_RFID:
+      return;
+
+    case OUVERTURE_M1:
+      if (pasEffectues < PAS_OUVERTURE_M1) {
+        faireUnPas(STEP1_PIN);
+        pasEffectues++;
+        return;
+      }
+      attenteDepuis = millis();
+      etatCycle = ATTENTE_APRES_OUVERTURE_M1;
+      return;
+
+    case ATTENTE_APRES_OUVERTURE_M1:
+      if (millis() - attenteDepuis >= ATTENTE_COURTE_MS) {
+        etatCycle = ATTENTE_RFID;
+        envoyerEvenement(F("motor1_opened"));
+        preparerLectureRfid();
+      }
+      return;
+
+    case FERMETURE_M1_ANNULATION:
+    case FERMETURE_M1_RFID: {
+      const bool annulation = etatCycle == FERMETURE_M1_ANNULATION;
+      if (digitalRead(FC1_FERME_PIN) == LOW) {
+        terminerFermetureMoteur1(annulation);
+        return;
+      }
+      if (pasEffectues >= PAS_FERMETURE_MAX_M1) {
+        signalerErreurFinCourse(F("motor1_limit_not_detected"));
+        return;
+      }
+      faireUnPas(STEP1_PIN);
+      pasEffectues++;
+      return;
+    }
+
+    case ATTENTE_APRES_FERMETURE_M1:
+      if (millis() - attenteDepuis >= ATTENTE_COURTE_MS) {
+        demarrerOuvertureMoteur2();
+      }
+      return;
+
+    case OUVERTURE_M2:
+      if (pasEffectues < PAS_OUVERTURE_M2) {
+        faireUnPas(STEP2_PIN);
+        pasEffectues++;
+        return;
+      }
+      attenteDepuis = millis();
+      etatCycle = ATTENTE_APRES_OUVERTURE_M2;
+      return;
+
+    case ATTENTE_APRES_OUVERTURE_M2:
+      if (millis() - attenteDepuis >= ATTENTE_MOTEUR_2_MS) {
+        demarrerFermetureMoteur2();
+      }
+      return;
+
+    case FERMETURE_M2:
+      if (digitalRead(FC2_FERME_PIN) == LOW) {
+        etatCycle = REPOS;
+        envoyerEvenement(F("motor_cycle_complete"));
+        return;
+      }
+      if (pasEffectues >= PAS_FERMETURE_MAX_M2) {
+        signalerErreurFinCourse(F("motor2_limit_not_detected"));
+        return;
+      }
+      faireUnPas(STEP2_PIN);
+      pasEffectues++;
+      return;
   }
 }
 
@@ -195,7 +333,7 @@ bool printUidAsJson() {
   uint8_t pos = 0;
 
   for (byte i = 0; i < mfrc522.uid.size && pos + 2 < sizeof(uidHex); i++) {
-    byte value = mfrc522.uid.uidByte[i];
+    const byte value = mfrc522.uid.uidByte[i];
     const char high = value >> 4;
     const char low = value & 0x0F;
 
@@ -214,6 +352,46 @@ bool printUidAsJson() {
   return true;
 }
 
+void lireRfid() {
+  if (etatCycle != ATTENTE_RFID) {
+    return;
+  }
+
+  const unsigned long now = millis();
+  if (now - lastRfidPollAt < RFID_POLL_INTERVAL_MS) {
+    return;
+  }
+  lastRfidPollAt = now;
+
+  byte atqa[2];
+  byte atqaSize = sizeof(atqa);
+  const MFRC522::StatusCode wakeStatus = mfrc522.PICC_WakeupA(atqa, &atqaSize);
+  if (wakeStatus != MFRC522::STATUS_OK && wakeStatus != MFRC522::STATUS_COLLISION) {
+    if (!rfidNoTagReported && now - rfidWaitingSince >= RFID_NO_TAG_REPORT_MS) {
+      rfidNoTagReported = true;
+      envoyerEvenement(F("rfid_no_tag_seen"));
+      envoyerDiagnosticRfid();
+    }
+    return;
+  }
+
+  envoyerEvenement(F("rfid_tag_detected"));
+
+  if (!mfrc522.PICC_ReadCardSerial()) {
+    envoyerEvenement(F("rfid_read_failed"));
+    return;
+  }
+
+  const bool nouvellePuce = printUidAsJson();
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
+
+  if (nouvellePuce) {
+    envoyerEvenement(F("rfid_cycle_started"));
+    demarrerFermetureMoteur1(FERMETURE_M1_RFID);
+  }
+}
+
 void setup() {
   Serial.begin(9600);
 
@@ -230,27 +408,22 @@ void setup() {
   pinMode(SS_PIN, OUTPUT);
   digitalWrite(SS_PIN, HIGH);
   SPI.begin();
-  mfrc522.PCD_Init();
-  envoyerEvenement(F("firmware_motor_byte_v1"));
+  initialiserLecteurRfid();
+
+  const byte rfidVersion = mfrc522.PCD_ReadRegister(MFRC522::VersionReg);
+  envoyerEvenement(F("firmware_motor_state_v9"));
+  envoyerDiagnosticRfid();
+  if (rfidVersion == 0x00 || rfidVersion == 0xFF) {
+    envoyerEvenement(F("rfid_reader_not_detected"));
+  } else {
+    envoyerEvenement(F("rfid_reader_ready"));
+  }
   envoyerEvenement(F("arduino_ready"));
 }
 
 void loop() {
   handleSerialInput();
-
-  if (!mfrc522.PICC_IsNewCardPresent()) {
-    return;
-  }
-
-  if (!mfrc522.PICC_ReadCardSerial()) {
-    return;
-  }
-
-  const bool nouvellePuce = printUidAsJson();
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
-
-  if (nouvellePuce) {
-    terminerCycleApresRfid();
-  }
+  mettreAJourCycleMoteurs();
+  lireRfid();
+  handleSerialInput();
 }

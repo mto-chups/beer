@@ -119,6 +119,7 @@ DROP TABLE IF EXISTS `kiosk_session`;
 CREATE TABLE IF NOT EXISTS `kiosk_session` (
   `kiosk_id` varchar(64) NOT NULL,
   `current_user_id` int(11) DEFAULT NULL,
+  `motor_action` varchar(16) DEFAULT NULL,
   `expires_at` datetime DEFAULT NULL,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`kiosk_id`)

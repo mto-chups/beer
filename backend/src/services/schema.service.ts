@@ -51,10 +51,15 @@ export async function ensureReliabilitySchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS kiosk_session (
       kiosk_id VARCHAR(64) NOT NULL PRIMARY KEY,
       current_user_id INT NULL,
+      motor_action VARCHAR(16) NULL,
       expires_at DATETIME NULL,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+
+  if (!(await columnExists('kiosk_session', 'motor_action'))) {
+    await db.query(`ALTER TABLE kiosk_session ADD COLUMN motor_action VARCHAR(16) NULL`);
+  }
 
   if (!(await columnExists('beer_bu', 'scan_id'))) {
     await db.query(`ALTER TABLE beer_bu ADD COLUMN scan_id VARCHAR(64) NULL`);
